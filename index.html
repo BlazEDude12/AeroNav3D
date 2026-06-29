@@ -273,7 +273,7 @@ class AeroNav {
     mount.appendChild(renderer.domElement); this.renderer=renderer;
     const controls=new THREE.OrbitControls(camera,renderer.domElement);
     controls.enableDamping=true; controls.dampingFactor=0.07; controls.enablePan=false;
-    controls.minDistance=128; controls.maxDistance=520; controls.rotateSpeed=0.5;
+    controls.minDistance=104; controls.maxDistance=520; controls.rotateSpeed=0.5;
     controls.autoRotate=true; controls.autoRotateSpeed=0.22;
     this.controls=controls;
     controls.addEventListener('start',()=>mount.style.cursor='grabbing');
@@ -386,10 +386,10 @@ class AeroNav {
     const mgr=new THREE.LoadingManager();mgr.onLoad=()=>{this._satReady=true;this._applyView();};
     const loader=new THREE.TextureLoader(mgr);loader.setCrossOrigin('anonymous');
     const setTexOpts=t=>{t.anisotropy=maxAniso;t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;t.generateMipmaps=true;};
-    const day=loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+    const day=loader.load('https://cdn.jsdelivr.net/gh/turban/webgl-earth@master/images/2_no_clouds_4k.jpg');
     const night=loader.load('https://unpkg.com/three-globe/example/img/earth-night.jpg');
     [day,night].forEach(setTexOpts);
-    const mat=new THREE.ShaderMaterial({uniforms:{dayTex:{value:day},nightTex:{value:night},sunDir:this.sunDir},vertexShader:vsh,fragmentShader:'uniform sampler2D dayTex,nightTex;uniform vec3 sunDir;varying vec2 vUv;varying vec3 vWN;void main(){float d=dot(normalize(vWN),normalize(sunDir));float dy=smoothstep(-0.06,0.16,d);vec3 dc=texture2D(dayTex,vUv).rgb;vec3 nc=texture2D(nightTex,vUv).rgb;vec3 col=mix(dc*0.02+nc*vec3(1.5,1.2,0.9)*2.2,dc*1.15,dy);gl_FragColor=vec4(col,1.0);}'});
+    const mat=new THREE.ShaderMaterial({uniforms:{dayTex:{value:day},nightTex:{value:night},sunDir:this.sunDir},vertexShader:vsh,fragmentShader:'uniform sampler2D dayTex,nightTex;uniform vec3 sunDir;varying vec2 vUv;varying vec3 vWN;void main(){float d=dot(normalize(vWN),normalize(sunDir));float dy=smoothstep(-0.10,0.18,d);vec3 dc=texture2D(dayTex,vUv).rgb;vec3 nc=texture2D(nightTex,vUv).rgb;vec3 night=dc*0.09+nc*vec3(1.4,1.2,0.85)*1.8;vec3 col=mix(night,dc*1.15,dy);gl_FragColor=vec4(col,1.0);}'});
     const m=new THREE.Mesh(new THREE.SphereGeometry(this.R,128,128),mat);m.visible=false;this.earth.add(m);this.satMeshes=[m];
   }
 
