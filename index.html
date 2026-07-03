@@ -320,6 +320,11 @@ function hideLoader() {
  * Run the site with:  python server.py
  * ================================================================== */
 const FLIGHT_DATA_URL = "/flights";
+// Public fallback for deployments where server.py isn't running (e.g. GitHub
+// Pages): a Cloudflare Worker that proxies the public api.adsb.lol and adds
+// CORS. Leave "" to disable. It must accept the same ?circle=lat,lon,radius
+// query as /flights.
+const FLIGHT_PROXY_FALLBACK = "https://aeronav3d.blazedude12.workers.dev/flights";
 const FLIGHT_POLL_MS = 6000;
 const FLIGHT_RADIUS_NM = 250;   // re-api circle query maximum
 const KNOTS_TO_MS = 0.514444;
@@ -412,6 +417,8 @@ const planeBillboards = scene.primitives.add(new Cesium.BillboardCollection({ sc
 const flights = new Map(); // hex -> { data, billboard, fetchedAt }
 let selectedHex = null;
 let flightsFailedOnce = false;
+let flightsEverLoaded = false;
+let flightEndpoint = FLIGHT_DATA_URL;
 
 function flightAltitudeMeters(ac) {
   return typeof ac.alt_baro === "number" ? Math.max(ac.alt_baro, 0) * FT_TO_M : 0;
@@ -434,23 +441,32 @@ async function pollFlights() {
   const lon = Cesium.Math.toDegrees(cam.longitude).toFixed(3);
   let json;
   try {
-    const res = await fetch(`${FLIGHT_DATA_URL}?circle=${lat},${lon},${FLIGHT_RADIUS_NM}`);
+    const res = await fetch(`${flightEndpoint}?circle=${lat},${lon},${FLIGHT_RADIUS_NM}`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     json = await res.json();
     if (json.error) throw new Error(json.error);
   } catch (err) {
-    if (!flightsFailedOnce) {
+    // No local proxy (e.g. deployed on GitHub Pages)? Switch to the public
+    // Worker fallback once and retry; if that fails too, show the notice.
+    if (flightEndpoint === FLIGHT_DATA_URL && FLIGHT_PROXY_FALLBACK) {
+      flightEndpoint = FLIGHT_PROXY_FALLBACK;
+      return pollFlights();
+    }
+    // Ignore transient failures (e.g. upstream 429s) once data has flowed
+    if (!flightsFailedOnce && !flightsEverLoaded) {
       flightsFailedOnce = true;
       console.warn("Flight data unavailable:", err.message);
-      showNotice("<strong>Live flights unavailable.</strong><br>Serve the site with <code>python server.py</code> — the adsb.lol re-api needs your feeder IP and a same-origin proxy.");
+      showNotice("<strong>Live flights unavailable.</strong><br>Serve the site with <code>python server.py</code>, or check the Worker proxy.");
     }
     return;
   }
   flightsFailedOnce = false;
+  flightsEverLoaded = true;
 
   const now = Date.now();
   const seen = new Set();
-  for (const ac of json.aircraft || []) {
+  // re-api names the list "aircraft"; the public api.adsb.lol names it "ac"
+  for (const ac of json.aircraft || json.ac || []) {
     if (typeof ac.lat !== "number" || typeof ac.lon !== "number") continue;
     seen.add(ac.hex);
     const klass = classifyAircraft(ac);
