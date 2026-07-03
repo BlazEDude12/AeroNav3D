@@ -1,0 +1,8 @@
+.git
+.claude
+.vscode
+.assetsignore
+server.py
+worker.js
+wrangler.jsonc
+Test_file
