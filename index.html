@@ -10,6 +10,9 @@
 <script src="https://cesium.com/downloads/cesiumjs/releases/1.130/Build/Cesium/Cesium.js"></script>
 <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.130/Build/Cesium/Widgets/widgets.css">
 
+<!-- Supabase (flight trails + favorites) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
 <style>
   :root{
     --bg:#070a12;
@@ -335,6 +338,80 @@ const FT_TO_M = 0.3048;
 
 const PLANE_SELECTED = Cesium.Color.fromCssColorString("#4cc3ff");
 
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ----- Flight trail: recent path of the selected plane ----- */
+const TRAIL_GAP_MS = 5 * 60 * 1000;  // data gaps longer than this break the line
+let trailEntities = [];              // all polyline entities of the current trail
+let trailPositions = [];             // live segment; grows as new polls arrive
+let trailHex = null;
+
+function clearTrail() {
+  trailEntities.forEach((e) => viewer.entities.remove(e));
+  trailEntities = [];
+  trailPositions = [];
+  trailHex = null;
+}
+
+function addTrailSegment(positions) {
+  const entity = viewer.entities.add({
+    polyline: {
+      positions,
+      width: 5,
+      material: new Cesium.PolylineGlowMaterialProperty({
+        glowPower: 0.25,
+        color: PLANE_SELECTED.withAlpha(0.85)
+      })
+    }
+  });
+  trailEntities.push(entity);
+  return entity;
+}
+
+async function showTrail(hex) {
+  clearTrail();
+  trailHex = hex;
+  let history = [];
+  try {
+    const since = new Date(Date.now() - 3600 * 1000).toISOString();
+    const { data, error } = await sb
+      .from("flight_positions")
+      .select("ts,lat,lon,alt_ft")
+      .eq("hex", hex)
+      .gte("ts", since)
+      .order("ts");
+    if (error) throw error;
+    history = data || [];
+  } catch (err) {
+    console.warn("Trail history unavailable:", err.message || err);
+  }
+  if (trailHex !== hex) return; // selection changed while loading
+
+  // Static segments for history, split at long gaps; the last segment
+  // becomes the live one and keeps growing while the plane is selected.
+  let seg = [];
+  let prevTs = 0;
+  for (const p of history) {
+    const t = Date.parse(p.ts);
+    if (seg.length && t - prevTs > TRAIL_GAP_MS) {
+      if (seg.length > 1) addTrailSegment(seg);
+      seg = [];
+    }
+    seg.push(Cesium.Cartesian3.fromDegrees(p.lon, p.lat, (p.alt_ft || 0) * FT_TO_M));
+    prevTs = t;
+  }
+  trailPositions = seg;
+  const live = addTrailSegment([]);
+  live.polyline.positions = new Cesium.CallbackProperty(() => trailPositions, false);
+}
+
+function extendTrail(ac) {
+  if (!trailHex || ac.hex !== trailHex) return;
+  trailPositions.push(
+    Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, flightAltitudeMeters(ac))
+  );
+}
+
 // Icons are drawn in white and tinted per class via billboard.color.
 // All glyphs point up (= track 0 / north).
 function drawIcon(draw) {
@@ -502,6 +579,7 @@ async function pollFlights() {
     }
     f.data = ac;
     f.fetchedAt = now;
+    extendTrail(ac);
   }
   // Drop aircraft that left the query circle or went silent
   for (const [hex, f] of flights) {
@@ -551,6 +629,7 @@ function closeFlightPanel() {
   if (selectedHex) setSelectedColor(selectedHex, false);
   selectedHex = null;
   flightPanel.style.display = "none";
+  clearTrail();
 }
 document.getElementById("fpClose").addEventListener("click", closeFlightPanel);
 
@@ -565,6 +644,7 @@ pickHandler.setInputAction((evt) => {
     setSelectedColor(hex, true);
     const f = flights.get(hex);
     if (f) { updateFlightPanel(f.data); flightPanel.style.display = "block"; }
+    if (trailHex !== hex) showTrail(hex);
   } else {
     closeFlightPanel();
   }
