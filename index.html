@@ -75,7 +75,7 @@
     transition:opacity .8s;pointer-events:none;
   }
   .notice{
-    position:absolute;top:20px;right:20px;z-index:10;max-width:320px;
+    position:absolute;top:72px;right:20px;z-index:10;max-width:320px;
     padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.5;
     background:rgba(60,35,10,.85);border:1px solid rgba(255,170,60,.35);color:#ffd9a0;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:none;
@@ -98,6 +98,72 @@
   .panel-grid span{display:block;font-size:9px;letter-spacing:.18em;color:var(--muted);}
   .panel-grid b{font-size:14px;font-weight:600;}
 
+  /* ---------- Favorites / auth ---------- */
+  .panel-head .actions{display:flex;gap:2px;}
+  #fpStar.active{color:#ffd76a;}
+  .mf-toggle{
+    position:absolute;top:20px;right:20px;z-index:10;cursor:pointer;
+    display:flex;align-items:center;gap:7px;padding:10px 14px;border-radius:12px;
+    background:var(--panel);border:1px solid var(--border);color:var(--text);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    font-size:12px;letter-spacing:.06em;
+  }
+  .mf-toggle:hover{background:rgba(40,55,85,.85);border-color:rgba(120,180,255,.4);}
+  .mf-toggle .star{color:#ffd76a;font-size:14px;}
+  .mf-panel{
+    position:absolute;top:72px;right:20px;z-index:11;width:248px;
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    display:none;overflow:hidden;
+  }
+  .mf-head{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 14px 10px;border-bottom:1px solid var(--border);}
+  .mf-title{font-size:13px;font-weight:700;letter-spacing:.08em;}
+  .mf-head a{color:var(--muted);font-size:11px;text-decoration:none;cursor:pointer;}
+  .mf-head a:hover{color:var(--text);}
+  .mf-list{max-height:290px;overflow-y:auto;}
+  .mf-empty{padding:16px 14px;font-size:12px;color:var(--muted);line-height:1.5;}
+  .mf-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+    padding:10px 14px;background:none;border:none;border-bottom:1px solid var(--border);
+    color:var(--text);cursor:pointer;font-size:13px;}
+  .mf-item:last-child{border-bottom:none;}
+  .mf-item:hover{background:rgba(40,55,85,.6);}
+  .mf-item .dot{width:7px;height:7px;border-radius:50%;background:#39ff8e;
+    box-shadow:0 0 6px #39ff8e;flex:none;}
+  .mf-item .dot.off{background:#3a4660;box-shadow:none;}
+  .mf-item .cs{font-weight:600;letter-spacing:.05em;flex:1;}
+  .mf-item .live{font-size:9px;letter-spacing:.2em;color:#39ff8e;}
+  .mf-item .rm{color:var(--muted);font-size:12px;padding:2px 4px;}
+  .mf-item .rm:hover{color:#ff7d7d;}
+  .auth-overlay{
+    position:absolute;inset:0;z-index:30;display:none;
+    align-items:center;justify-content:center;background:rgba(4,6,12,.55);
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  }
+  .auth-card{
+    position:relative;width:300px;padding:22px;border-radius:14px;
+    background:var(--panel);border:1px solid var(--border);
+  }
+  .auth-card h2{font-size:16px;letter-spacing:.04em;margin-bottom:4px;}
+  .auth-card .sub{font-size:11px;color:var(--muted);margin-bottom:16px;}
+  .auth-card input{
+    width:100%;margin-bottom:10px;padding:10px 12px;border-radius:9px;
+    background:rgba(8,12,22,.7);border:1px solid var(--border);color:var(--text);
+    font-size:13px;outline:none;
+  }
+  .auth-card input:focus{border-color:rgba(120,180,255,.5);}
+  .auth-error{font-size:11px;color:#ff9d9d;min-height:15px;margin-bottom:8px;line-height:1.4;}
+  .auth-primary{
+    width:100%;padding:10px;border-radius:9px;border:none;cursor:pointer;
+    background:var(--accent);color:#04121d;font-size:13px;font-weight:700;
+  }
+  .auth-primary:hover{filter:brightness(1.1);}
+  .auth-alt{font-size:11px;color:var(--muted);margin-top:12px;text-align:center;}
+  .auth-alt a{color:var(--accent);cursor:pointer;text-decoration:none;}
+  .auth-close{position:absolute;top:10px;right:12px;background:none;border:none;
+    color:var(--muted);font-size:14px;cursor:pointer;}
+  .auth-close:hover{color:var(--text);}
+
   #loader{
     position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:14px;background:var(--bg);
@@ -119,6 +185,8 @@
     .controls button{width:38px;height:38px;}
     .hint{display:none;}
     .notice{top:auto;bottom:76px;right:12px;left:12px;max-width:none;}
+    .mf-toggle{top:12px;right:12px;padding:8px 12px;}
+    .mf-panel{top:64px;right:12px;left:auto;width:248px;}
   }
 </style>
 </head>
@@ -150,7 +218,10 @@
       <div class="panel-callsign" id="fpCallsign">—</div>
       <div class="panel-sub" id="fpSub">—</div>
     </div>
-    <button id="fpClose" aria-label="Close flight details">✕</button>
+    <div class="actions">
+      <button id="fpStar" aria-label="Save to My Flights" title="Save to My Flights">☆</button>
+      <button id="fpClose" aria-label="Close flight details">✕</button>
+    </div>
   </div>
   <div class="panel-grid">
     <div><span>ALTITUDE</span><b id="fpAlt">—</b></div>
@@ -169,6 +240,32 @@
   <button id="tiltDown" title="Tilt down" aria-label="Tilt down">⤓</button>
   <div class="divider"></div>
   <button id="home" title="Reset view" aria-label="Reset view">⌂</button>
+</div>
+
+<!-- My Flights -->
+<button class="mf-toggle" id="mfToggle" aria-expanded="false">
+  <span class="star">★</span> My Flights
+</button>
+<div class="mf-panel" id="mfPanel">
+  <div class="mf-head">
+    <div class="mf-title">MY FLIGHTS</div>
+    <a id="mfAuthLink">Sign in</a>
+  </div>
+  <div class="mf-list" id="mfList"></div>
+</div>
+
+<!-- Sign-in card -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <button class="auth-close" id="authClose" aria-label="Close">✕</button>
+    <h2 id="authTitle">Sign in</h2>
+    <div class="sub">Save flights and spot them live on the globe.</div>
+    <input id="authEmail" type="email" placeholder="Email" autocomplete="email">
+    <input id="authPass" type="password" placeholder="Password (min 6 characters)" autocomplete="current-password">
+    <div class="auth-error" id="authError"></div>
+    <button class="auth-primary" id="authSubmit">Sign in</button>
+    <div class="auth-alt" id="authAlt">No account? <a id="authMode">Create one</a></div>
+  </div>
 </div>
 
 <div class="hint" id="hint">Drag to pan &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Ctrl + drag to tilt</div>
@@ -592,6 +689,7 @@ async function pollFlights() {
   document.getElementById("brandTag").textContent =
     flights.size ? `Global Navigation · ${flights.size} live` : "Global Navigation";
   if (selectedHex && flights.has(selectedHex)) updateFlightPanel(flights.get(selectedHex).data);
+  if (mfPanel.style.display === "block") renderMyFlights();
 }
 
 // Smooth motion between polls: advance every frame along track at ground speed
@@ -644,6 +742,7 @@ pickHandler.setInputAction((evt) => {
     setSelectedColor(hex, true);
     const f = flights.get(hex);
     if (f) { updateFlightPanel(f.data); flightPanel.style.display = "block"; }
+    updateStar();
     if (trailHex !== hex) showTrail(hex);
   } else {
     closeFlightPanel();
@@ -657,6 +756,153 @@ let lastMovePoll = 0;
 viewer.camera.moveEnd.addEventListener(() => {
   if (Date.now() - lastMovePoll > 2500) { lastMovePoll = Date.now(); pollFlights(); }
 });
+
+/* ----- Favorites & sign-in ----- */
+const favorites = new Map(); // hex -> { id, hex, callsign }
+let session = null;
+let authIsSignUp = false;
+
+const mfPanel = document.getElementById("mfPanel");
+const authOverlay = document.getElementById("authOverlay");
+
+sb.auth.onAuthStateChange((_event, s) => {
+  session = s;
+  document.getElementById("mfAuthLink").textContent = s ? "Sign out" : "Sign in";
+  refreshFavorites();
+});
+
+async function refreshFavorites() {
+  favorites.clear();
+  if (session) {
+    const { data, error } = await sb.from("favorites").select("id,hex,callsign");
+    if (error) console.warn("favorites load failed:", error.message);
+    (data || []).forEach((f) => favorites.set(f.hex, f));
+  }
+  renderMyFlights();
+  updateStar();
+}
+
+function updateStar() {
+  const btn = document.getElementById("fpStar");
+  const isFav = selectedHex && favorites.has(selectedHex);
+  btn.textContent = isFav ? "★" : "☆";
+  btn.classList.toggle("active", !!isFav);
+}
+
+async function toggleFavorite() {
+  if (!selectedHex) return;
+  if (!session) { openAuth(); return; }
+  const existing = favorites.get(selectedHex);
+  if (existing) {
+    const { error } = await sb.from("favorites").delete().eq("id", existing.id);
+    if (!error) favorites.delete(existing.hex);
+    else console.warn("favorite remove failed:", error.message);
+  } else {
+    const f = flights.get(selectedHex);
+    const callsign = (f && f.data && (f.data.flight || "").trim()) || selectedHex.toUpperCase();
+    const { data, error } = await sb.from("favorites")
+      .insert({ hex: selectedHex, callsign })
+      .select("id,hex,callsign").single();
+    if (!error && data) favorites.set(data.hex, data);
+    else if (error) console.warn("favorite save failed:", error.message);
+  }
+  renderMyFlights();
+  updateStar();
+}
+
+function renderMyFlights() {
+  const list = document.getElementById("mfList");
+  if (!session) {
+    list.innerHTML = '<div class="mf-empty">Sign in to save flights and see when they\'re live on the globe.</div>';
+    return;
+  }
+  if (!favorites.size) {
+    list.innerHTML = '<div class="mf-empty">No saved flights yet. Click a plane, then tap the ☆ in its panel.</div>';
+    return;
+  }
+  list.innerHTML = "";
+  favorites.forEach((fav) => {
+    const liveNow = flights.has(fav.hex);
+    const item = document.createElement("button");
+    item.className = "mf-item";
+    item.innerHTML =
+      '<span class="dot ' + (liveNow ? "" : "off") + '"></span>' +
+      '<span class="cs"></span>' +
+      (liveNow ? '<span class="live">LIVE</span>' : "") +
+      '<span class="rm" title="Remove">✕</span>';
+    item.querySelector(".cs").textContent = fav.callsign || fav.hex.toUpperCase();
+    item.querySelector(".rm").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const { error } = await sb.from("favorites").delete().eq("id", fav.id);
+      if (!error) { favorites.delete(fav.hex); renderMyFlights(); updateStar(); }
+    });
+    item.addEventListener("click", () => {
+      const f = flights.get(fav.hex);
+      if (!f || !f.data) return;
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(
+          f.data.lon, f.data.lat, flightAltitudeMeters(f.data) + 150_000),
+        duration: 1.8
+      });
+    });
+    list.appendChild(item);
+  });
+}
+
+/* Sign-in card */
+function openAuth() {
+  authOverlay.style.display = "flex";
+  document.getElementById("authError").textContent = "";
+  document.getElementById("authEmail").focus();
+}
+function closeAuth() { authOverlay.style.display = "none"; }
+function setAuthMode(signUp) {
+  authIsSignUp = signUp;
+  document.getElementById("authTitle").textContent = signUp ? "Create account" : "Sign in";
+  document.getElementById("authSubmit").textContent = signUp ? "Create account" : "Sign in";
+  document.getElementById("authAlt").innerHTML = signUp
+    ? 'Have an account? <a id="authMode">Sign in</a>'
+    : 'No account? <a id="authMode">Create one</a>';
+  document.getElementById("authMode").addEventListener("click", () => setAuthMode(!authIsSignUp));
+}
+async function submitAuth() {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPass").value;
+  const errEl = document.getElementById("authError");
+  if (!email || password.length < 6) {
+    errEl.textContent = "Enter your email and a password of at least 6 characters.";
+    return;
+  }
+  errEl.textContent = "";
+  const { data, error } = authIsSignUp
+    ? await sb.auth.signUp({ email, password })
+    : await sb.auth.signInWithPassword({ email, password });
+  if (error) { errEl.textContent = error.message; return; }
+  if (authIsSignUp && !data.session) {
+    errEl.textContent = "Check your email to confirm your account, then sign in.";
+    return;
+  }
+  closeAuth();
+}
+
+document.getElementById("fpStar").addEventListener("click", toggleFavorite);
+document.getElementById("mfToggle").addEventListener("click", () => {
+  const open = mfPanel.style.display === "block";
+  mfPanel.style.display = open ? "none" : "block";
+  document.getElementById("mfToggle").setAttribute("aria-expanded", String(!open));
+  if (!open) renderMyFlights();
+});
+document.getElementById("mfAuthLink").addEventListener("click", async () => {
+  if (session) await sb.auth.signOut();
+  else openAuth();
+});
+document.getElementById("authClose").addEventListener("click", closeAuth);
+document.getElementById("authSubmit").addEventListener("click", submitAuth);
+document.getElementById("authPass").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitAuth();
+});
+setAuthMode(false);
+refreshFavorites();
 
 /* ---------------- Controls ---------------- */
 function cameraHeight() {
