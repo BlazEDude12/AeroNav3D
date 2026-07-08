@@ -24,8 +24,10 @@ save flights to your **My Flights** panel and spot them live on the globe.
     security so each user only ever sees their own.
   - Auth — email + password ("confirm email" should be OFF in the dashboard;
     the free tier can't send enough confirmation emails for a public site).
-- **Fallback** (`worker.js`) — the original Cloudflare Worker proxy, kept as
-  an automatic emergency backup if the Supabase function is ever unreachable.
+- **Fallbacks** — if the Supabase function is ever unreachable, the page
+  automatically switches to the original Cloudflare Worker proxy
+  (`worker.js`); if Google imagery ever stops working, it automatically
+  switches to keyless Esri World Imagery. Visitors never see an outage.
 
 ## Working on the site
 
