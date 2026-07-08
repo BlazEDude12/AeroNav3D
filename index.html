@@ -184,6 +184,10 @@
 const GOOGLE_MAPS_API_KEY = "AIzaSyA-n1jGuFhWQGcBPJNXauBWGnATg8Wg42U";
 const GOOGLE_MAP_TYPE = "satellite"; // "satellite" | "roadmap" | "terrain"
 
+/* Supabase backend (flight feed, trails, favorites) */
+const SUPABASE_URL = "https://kotesjmkaoebjsoaxizb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_hnbnVldylI_kwLQ-8b8F8w_7kzXhHvg";
+
 const HOME_VIEW = {
   destination: Cesium.Cartesian3.fromDegrees(0, 18, 22_000_000),
   orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 }
@@ -314,16 +318,15 @@ function hideLoader() {
   setTimeout(() => { hint.style.opacity = "0"; }, 6000);
 }
 
-/* ================= LIVE FLIGHTS (adsb.lol re-api) =================
- * Data comes from the local proxy in server.py (/flights) because the
- * re-api is IP-restricted to ADS-B feeder stations and has no CORS.
- * Run the site with:  python server.py
+/* ==================== LIVE FLIGHTS (Supabase) =====================
+ * The flights Edge Function proxies public ADS-B aggregators with
+ * failover and a shared cache, and records position snapshots for
+ * the flight-trail feature. See supabase/functions/flights/index.ts.
  * ================================================================== */
-const FLIGHT_DATA_URL = "/flights";
-// Public fallback for deployments where server.py isn't running (e.g. GitHub
-// Pages): a Cloudflare Worker that proxies the public api.adsb.lol and adds
-// CORS. Leave "" to disable. It must accept the same ?circle=lat,lon,radius
-// query as /flights.
+const FLIGHT_DATA_URL = SUPABASE_URL + "/functions/v1/flights";
+// Emergency fallback if the Supabase function is ever unreachable: the
+// original Cloudflare Worker proxy. Leave "" to disable. It must accept
+// the same ?circle=lat,lon,radius query.
 const FLIGHT_PROXY_FALLBACK = "https://aeronav3d.blazedude12.workers.dev/flights";
 const FLIGHT_POLL_MS = 6000;
 const FLIGHT_RADIUS_NM = 250;   // re-api circle query maximum
