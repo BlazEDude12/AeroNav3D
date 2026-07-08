@@ -663,6 +663,17 @@ test
 - [ ] **Step 2: Google Maps key lockdown instructions** for the user (click-by-click): console.cloud.google.com → APIs & Services → Credentials → the key → Application restrictions: Websites → add `https://<domain>/*` and `http://localhost:8321/*` → API restrictions: Map Tiles API → Save.
 - [ ] **Step 3: Final commit**; remind the user to push via GitHub Desktop (their usual workflow) so GitHub matches the live site.
 
+## Execution addendum (2026-07-07)
+
+Task 3 as planned used an in-memory cache + snapshot throttle (ported from the
+Cloudflare Worker). Verification proved Supabase Edge Functions do NOT share
+module state between requests (12 sequential requests: zero cache hits; one
+snapshot batch per request instead of per 30 s). Fixed by moving both into a
+`feed_cache` Postgres table (migration `0003_feed_cache.sql`, service-role
+only, daily cleanup cron). Upstreams reordered fastest-first
+(airplanes.live → adsb.fi → adsb.lol; adsb.lol measured at 15 s that day).
+Verified after redeploy: cache hits ~0.4 s, one snapshot batch per 30 s window.
+
 ## Self-review notes
 
 - Spec coverage: feed (T3–4), trails (T2, T3 snapshot, T5), favorites (T2, T6), hosting (T7), key lockdown (T8) — all covered.
