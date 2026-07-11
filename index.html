@@ -82,21 +82,36 @@
   }
   /* ---------- Flight detail panel ---------- */
   .panel{
-    position:absolute;top:96px;left:20px;z-index:10;width:232px;
-    background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    position:absolute;top:96px;left:20px;z-index:10;width:296px;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    display:none;overflow:hidden;
+    overflow:hidden;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transform:translateY(-12px) scale(.95);
+    transition:opacity .35s ease,
+      transform .35s cubic-bezier(.16,1,.3,1),
+      visibility 0s linear .35s;
+  }
+  .panel.open{
+    opacity:1;visibility:visible;pointer-events:auto;
+    transform:translateY(0) scale(1);
+    transition:opacity .35s ease,
+      transform .35s cubic-bezier(.16,1,.3,1),
+      visibility 0s;
   }
   .panel-head{display:flex;justify-content:space-between;align-items:flex-start;
     padding:12px 14px 10px;border-bottom:1px solid var(--border);}
-  .panel-callsign{font-size:18px;font-weight:700;letter-spacing:.05em;}
-  .panel-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+  .panel-callsign{font-size:24px;font-weight:700;letter-spacing:.05em;}
+  .panel-ident{display:flex;align-items:center;gap:12px;}
+  .panel-logo{width:42px;height:42px;border-radius:8px;background:#fff;
+    object-fit:contain;padding:3px;display:none;}
+  .panel-sub{font-size:14px;color:var(--muted);margin-top:3px;}
   .panel-head button{background:none;border:none;color:var(--muted);
     font-size:14px;cursor:pointer;padding:2px 4px;line-height:1;}
   .panel-head button:hover{color:var(--text);}
-  .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:12px 14px;}
-  .panel-grid span{display:block;font-size:9px;letter-spacing:.18em;color:var(--muted);}
-  .panel-grid b{font-size:14px;font-weight:600;}
+  .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;padding:14px 16px;}
+  .panel-grid span{display:block;font-size:10px;letter-spacing:.18em;color:var(--muted);}
+  .panel-grid b{font-size:17px;font-weight:600;}
 
   /* ---------- Favorites / auth ---------- */
   .panel-head .actions{display:flex;gap:2px;}
@@ -214,9 +229,12 @@
 <!-- Flight detail panel -->
 <div class="panel" id="flightPanel">
   <div class="panel-head">
-    <div>
-      <div class="panel-callsign" id="fpCallsign">—</div>
-      <div class="panel-sub" id="fpSub">—</div>
+    <div class="panel-ident">
+      <img class="panel-logo" id="fpLogo" alt="">
+      <div>
+        <div class="panel-callsign" id="fpCallsign">—</div>
+        <div class="panel-sub" id="fpSub">—</div>
+      </div>
     </div>
     <div class="actions">
       <button id="fpStar" aria-label="Save to My Flights" title="Save to My Flights">☆</button>
@@ -726,14 +744,100 @@ scene.preRender.addEventListener(() => {
 /* ----- selection & detail panel ----- */
 const flightPanel = document.getElementById("flightPanel");
 
-function fmtAlt(ac) {
+/* Airline lookup: map the callsign's 3-letter ICAO prefix to the airline's
+   IATA code (for the logo, from Google's public airline-logo CDN) and name. */
+const AIRLINES = {
+  // US majors + regionals
+  AAL:["AA","American Airlines"], DAL:["DL","Delta Air Lines"],
+  UAL:["UA","United Airlines"], SWA:["WN","Southwest Airlines"],
+  ASA:["AS","Alaska Airlines"], JBU:["B6","JetBlue"],
+  NKS:["NK","Spirit Airlines"], FFT:["F9","Frontier Airlines"],
+  HAL:["HA","Hawaiian Airlines"], SCX:["SY","Sun Country Airlines"],
+  AAY:["G4","Allegiant Air"], SKW:["OO","SkyWest Airlines"],
+  RPA:["YX","Republic Airways"], EDV:["9E","Endeavor Air"],
+  ENY:["MQ","Envoy Air"], JIA:["OH","PSA Airlines"],
+  QXE:["QX","Horizon Air"], GJS:["G7","GoJet Airlines"],
+  ASH:["YV","Mesa Airlines"], PDT:["PT","Piedmont Airlines"],
+  // Canada / Latin America
+  ACA:["AC","Air Canada"], WJA:["WS","WestJet"], POE:["PD","Porter Airlines"],
+  AMX:["AM","Aeroméxico"], VOI:["Y4","Volaris"], CMP:["CM","Copa Airlines"],
+  AVA:["AV","Avianca"], LAN:["LA","LATAM Airlines"], GLO:["G3","GOL"],
+  AZU:["AD","Azul"], ARG:["AR","Aerolíneas Argentinas"],
+  // Europe
+  BAW:["BA","British Airways"], VIR:["VS","Virgin Atlantic"],
+  EZY:["U2","easyJet"], RYR:["FR","Ryanair"], AFR:["AF","Air France"],
+  KLM:["KL","KLM"], DLH:["LH","Lufthansa"], EWG:["EW","Eurowings"],
+  SWR:["LX","SWISS"], AUA:["OS","Austrian Airlines"],
+  BEL:["SN","Brussels Airlines"], IBE:["IB","Iberia"], VLG:["VY","Vueling"],
+  AEA:["UX","Air Europa"], TAP:["TP","TAP Air Portugal"],
+  SAS:["SK","SAS"], FIN:["AY","Finnair"], NOZ:["D8","Norwegian"],
+  NSZ:["DY","Norwegian"], LOT:["LO","LOT Polish Airlines"],
+  CSA:["OK","Czech Airlines"], WZZ:["W6","Wizz Air"],
+  EIN:["EI","Aer Lingus"], THY:["TK","Turkish Airlines"],
+  PGT:["PC","Pegasus Airlines"], AFL:["SU","Aeroflot"],
+  AZA:["AZ","ITA Airways"], ITY:["AZ","ITA Airways"],
+  // Middle East / Africa
+  UAE:["EK","Emirates"], ETD:["EY","Etihad Airways"],
+  QTR:["QR","Qatar Airways"], SVA:["SV","Saudia"], ELY:["LY","El Al"],
+  MSR:["MS","EgyptAir"], ETH:["ET","Ethiopian Airlines"],
+  KQA:["KQ","Kenya Airways"], SAA:["SA","South African Airways"],
+  RAM:["AT","Royal Air Maroc"],
+  // Asia-Pacific
+  QFA:["QF","Qantas"], VOZ:["VA","Virgin Australia"], JST:["JQ","Jetstar"],
+  ANZ:["NZ","Air New Zealand"], JAL:["JL","Japan Airlines"],
+  ANA:["NH","All Nippon Airways"], KAL:["KE","Korean Air"],
+  AAR:["OZ","Asiana Airlines"], CPA:["CX","Cathay Pacific"],
+  CAL:["CI","China Airlines"], EVA:["BR","EVA Air"],
+  CSN:["CZ","China Southern"], CES:["MU","China Eastern"],
+  CCA:["CA","Air China"], CHH:["HU","Hainan Airlines"],
+  SIA:["SQ","Singapore Airlines"], MAS:["MH","Malaysia Airlines"],
+  THA:["TG","Thai Airways"], GIA:["GA","Garuda Indonesia"],
+  VJC:["VJ","VietJet Air"], HVN:["VN","Vietnam Airlines"],
+  PAL:["PR","Philippine Airlines"], CEB:["5J","Cebu Pacific"],
+  AIC:["AI","Air India"], IGO:["6E","IndiGo"],
+  // Cargo
+  FDX:["FX","FedEx Express"], UPS:["5X","UPS Airlines"],
+  GTI:["5Y","Atlas Air"], ABX:["GB","ABX Air"], CLX:["CV","Cargolux"],
+};
+function airlineFor(callsign) {
+  const prefix = /^[A-Z]{3}/.exec(callsign)?.[0];
+  return (prefix && AIRLINES[prefix]) || null; // [iata, name] or null
+}
+const fpLogo = document.getElementById("fpLogo");
+fpLogo.addEventListener("error", () => { fpLogo.style.display = "none"; });
+let logoPrefix = null;
+function updateAirlineLogo(callsign) {
+  const prefix = /^[A-Z]{3}/.exec(callsign)?.[0] ?? null;
+  if (prefix === logoPrefix) return; // avoid re-requesting on each refresh
+  logoPrefix = prefix;
+  const airline = airlineFor(callsign);
+  if (airline) {
+    fpLogo.src = `https://www.gstatic.com/flights/airline_logos/70px/${airline[0]}.png`;
+    fpLogo.style.display = "block";
+  } else {
+    fpLogo.style.display = "none";
+    fpLogo.removeAttribute("src");
+  }
+}
+
+function fmtAlt(ac, dtSec) {
   if (ac.alt_baro === "ground") return "GROUND";
-  return typeof ac.alt_baro === "number" ? ac.alt_baro.toLocaleString() + " ft" : "—";
+  if (typeof ac.alt_baro !== "number") return "—";
+  // Dead-reckon between data polls, like the plane icons do
+  let alt = ac.alt_baro;
+  if (dtSec && typeof ac.baro_rate === "number") alt += ac.baro_rate * (dtSec / 60);
+  return (Math.round(alt / 25) * 25).toLocaleString() + " ft";
 }
 function updateFlightPanel(ac) {
-  document.getElementById("fpCallsign").textContent = (ac.flight || "").trim() || ac.hex.toUpperCase();
-  document.getElementById("fpSub").textContent = [ac.r, ac.t].filter(Boolean).join(" · ") || "—";
-  document.getElementById("fpAlt").textContent = fmtAlt(ac);
+  const callsign = (ac.flight || "").trim() || ac.hex.toUpperCase();
+  updateAirlineLogo(callsign);
+  const airline = airlineFor(callsign);
+  const rec = flights.get(ac.hex);
+  const dtSec = rec ? (Date.now() - rec.fetchedAt) / 1000 : 0;
+  document.getElementById("fpCallsign").textContent = callsign;
+  document.getElementById("fpSub").textContent =
+    [airline && airline[1], ac.r, ac.t].filter(Boolean).join(" · ") || "—";
+  document.getElementById("fpAlt").textContent = fmtAlt(ac, dtSec);
   document.getElementById("fpSpd").textContent = typeof ac.gs === "number" ? Math.round(ac.gs) + " kt" : "—";
   document.getElementById("fpTrk").textContent = typeof ac.track === "number" ? Math.round(ac.track) + "°" : "—";
   document.getElementById("fpVr").textContent = typeof ac.baro_rate === "number" ? ac.baro_rate + " ft/min" : "—";
@@ -745,10 +849,15 @@ function setSelectedColor(hex, selected) {
 function closeFlightPanel() {
   if (selectedHex) setSelectedColor(selectedHex, false);
   selectedHex = null;
-  flightPanel.style.display = "none";
+  flightPanel.classList.remove("open");
   clearTrail();
 }
 document.getElementById("fpClose").addEventListener("click", closeFlightPanel);
+
+// Refresh the panel stats every second so the readout stays live between polls
+setInterval(() => {
+  if (selectedHex && flights.has(selectedHex)) updateFlightPanel(flights.get(selectedHex).data);
+}, 1000);
 
 const pickHandler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
 pickHandler.setInputAction((evt) => {
@@ -760,7 +869,7 @@ pickHandler.setInputAction((evt) => {
     selectedHex = hex;
     setSelectedColor(hex, true);
     const f = flights.get(hex);
-    if (f) { updateFlightPanel(f.data); flightPanel.style.display = "block"; }
+    if (f) { updateFlightPanel(f.data); flightPanel.classList.add("open"); }
     updateStar();
     if (trailHex !== hex) showTrail(hex);
   } else {
