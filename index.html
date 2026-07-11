@@ -109,6 +109,14 @@
   .panel-head button{background:none;border:none;color:var(--muted);
     font-size:14px;cursor:pointer;padding:2px 4px;line-height:1;}
   .panel-head button:hover{color:var(--text);}
+  .panel-photo{position:relative;display:none;border-bottom:1px solid var(--border);}
+  .panel-photo img{display:block;width:100%;height:180px;object-fit:cover;}
+  .panel-photo a{
+    position:absolute;right:6px;bottom:6px;font-size:9px;letter-spacing:.04em;
+    color:rgba(255,255,255,.9);background:rgba(0,0,0,.5);padding:2px 7px;
+    border-radius:6px;text-decoration:none;
+  }
+  .panel-photo a:hover{background:rgba(0,0,0,.75);}
   .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;padding:14px 16px;}
   .panel-grid span{display:block;font-size:10px;letter-spacing:.18em;color:var(--muted);}
   .panel-grid b{font-size:17px;font-weight:600;}
@@ -240,6 +248,10 @@
       <button id="fpStar" aria-label="Save to My Flights" title="Save to My Flights">☆</button>
       <button id="fpClose" aria-label="Close flight details">✕</button>
     </div>
+  </div>
+  <div class="panel-photo" id="fpPhotoWrap">
+    <img id="fpPhoto" alt="Aircraft photo">
+    <a id="fpPhotoCredit" target="_blank" rel="noopener"></a>
   </div>
   <div class="panel-grid">
     <div><span>ALTITUDE</span><b id="fpAlt">—</b></div>
@@ -803,6 +815,36 @@ function airlineFor(callsign) {
   const prefix = /^[A-Z]{3}/.exec(callsign)?.[0];
   return (prefix && AIRLINES[prefix]) || null; // [iata, name] or null
 }
+/* Aircraft photo from the Planespotters.net public API (free; photographer
+   credit + link back required). Cached per airframe so the 1 s panel
+   refresher and re-selections never re-request. */
+const fpPhotoWrap = document.getElementById("fpPhotoWrap");
+const fpPhoto = document.getElementById("fpPhoto");
+const fpPhotoCredit = document.getElementById("fpPhotoCredit");
+const photoCache = new Map(); // hex -> first photo object, or null if none
+let photoHex = null;
+async function updateAircraftPhoto(rawHex) {
+  const hex = (rawHex || "").replace(/[^0-9a-f]/gi, ""); // strip TIS-B "~" prefix
+  if (hex === photoHex) return;
+  photoHex = hex;
+  fpPhotoWrap.style.display = "none";
+  if (!hex) return;
+  if (!photoCache.has(hex)) {
+    let photo = null;
+    try {
+      const res = await fetch(`https://api.planespotters.net/pub/photos/hex/${hex}`);
+      photo = (await res.json()).photos?.[0] ?? null;
+    } catch (e) { /* offline/rate-limited: treat as no photo */ }
+    photoCache.set(hex, photo);
+    if (photoHex !== hex) return; // selection changed while loading
+  }
+  const photo = photoCache.get(hex);
+  if (!photo) return;
+  fpPhoto.src = photo.thumbnail_large?.src || photo.thumbnail?.src || "";
+  fpPhotoCredit.textContent = `© ${photo.photographer} · Planespotters.net`;
+  fpPhotoCredit.href = photo.link;
+  fpPhotoWrap.style.display = "block";
+}
 const fpLogo = document.getElementById("fpLogo");
 fpLogo.addEventListener("error", () => { fpLogo.style.display = "none"; });
 let logoPrefix = null;
@@ -831,6 +873,7 @@ function fmtAlt(ac, dtSec) {
 function updateFlightPanel(ac) {
   const callsign = (ac.flight || "").trim() || ac.hex.toUpperCase();
   updateAirlineLogo(callsign);
+  updateAircraftPhoto(ac.hex);
   const airline = airlineFor(callsign);
   const rec = flights.get(ac.hex);
   const dtSec = rec ? (Date.now() - rec.fetchedAt) / 1000 : 0;
