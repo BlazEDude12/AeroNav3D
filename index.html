@@ -37,22 +37,13 @@
 
   /* ---------- Branding ---------- */
   .brand{
-    position:absolute;top:20px;left:20px;right:20px;z-index:10;
+    position:absolute;top:20px;left:20px;z-index:10;
     display:flex;align-items:center;gap:12px;
-    padding:10px 12px;border-radius:12px;
+    padding:10px 16px 10px 12px;border-radius:12px;
     background:var(--panel);border:1px solid var(--border);
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     user-select:none;
   }
-  /* Middle of the bar is reserved for the future search field;
-     My Flights docks on the right as a pill inside the bar. */
-  .brand .mf-toggle{
-    position:static;margin-left:auto;padding:8px 14px;
-    box-shadow:0 1px 0 rgba(255,255,255,.14) inset,
-               0 -1px 0 rgba(0,0,0,.28) inset,
-               0 2px 5px rgba(0,0,0,.35);
-  }
-  .brand .mf-toggle::before{display:none;}
   .brand svg{display:block;}
   .brand .name{font-size:17px;font-weight:700;letter-spacing:.04em;}
   .brand .name em{font-style:normal;color:var(--accent);}
@@ -84,7 +75,7 @@
     transition:opacity .8s;pointer-events:none;
   }
   .notice{
-    position:absolute;top:84px;right:20px;z-index:10;max-width:320px;
+    position:absolute;top:72px;right:20px;z-index:10;max-width:320px;
     padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.5;
     background:rgba(60,35,10,.85);border:1px solid rgba(255,170,60,.35);color:#ffd9a0;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:none;
@@ -134,7 +125,7 @@
   .panel-head .actions{display:flex;gap:2px;}
   #fpStar.active{color:#ffd76a;}
   .mf-toggle{
-    cursor:pointer;
+    position:absolute;top:20px;right:20px;z-index:10;cursor:pointer;
     display:flex;align-items:center;gap:7px;padding:10px 14px;border-radius:12px;
     background:var(--panel);border:1px solid var(--border);color:var(--text);
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
@@ -143,7 +134,7 @@
   .mf-toggle:hover{background:rgba(40,55,85,.85);border-color:rgba(120,180,255,.4);}
   .mf-toggle .star{color:#ffd76a;font-size:14px;}
   .mf-panel{
-    position:absolute;top:84px;right:20px;z-index:11;width:248px;
+    position:absolute;top:72px;right:20px;z-index:11;width:248px;
     background:var(--panel);border:1px solid var(--border);border-radius:12px;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     display:none;overflow:hidden;
@@ -233,7 +224,7 @@
      The other targets are already position:absolute; only the in-flow
      controls buttons need a positioning context for the pseudo-element. */
   .controls button{position:relative;}
-  .brand::before,.panel::before,.mf-panel::before,.controls button::before{
+  .brand::before,.panel::before,.mf-panel::before,.mf-toggle::before,.controls button::before{
     content:"";position:absolute;left:10%;right:10%;top:0;height:1px;
     background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);
     pointer-events:none;
@@ -268,15 +259,15 @@
   :is(button,a):focus-visible{outline:2px solid rgba(120,180,255,.6);outline-offset:2px;}
 
   @media (max-width:600px){
-    .brand{top:12px;left:12px;right:12px;padding:8px 10px;}
+    .brand{top:12px;left:12px;padding:8px 12px 8px 10px;}
     .brand .name{font-size:15px;}
     .brand .tag{display:none;}
     .controls{right:12px;bottom:20px;}
     .controls button{width:38px;height:38px;}
     .hint{display:none;}
     .notice{top:auto;bottom:76px;right:12px;left:12px;max-width:none;}
-    .mf-toggle{padding:7px 10px;}
-    .mf-panel{top:72px;right:12px;left:auto;width:248px;}
+    .mf-toggle{top:12px;right:12px;padding:8px 12px;}
+    .mf-panel{top:64px;right:12px;left:auto;width:248px;}
   }
 </style>
 </head>
@@ -319,10 +310,6 @@
     <div class="name">Aero<em>Nav</em>3D</div>
     <div class="tag" id="brandTag">Global Navigation</div>
   </div>
-  <!-- (future search bar goes here) -->
-  <button class="mf-toggle" id="mfToggle" aria-expanded="false">
-    <span class="star">★</span> My Flights
-  </button>
 </div>
 
 <!-- Missing-key notice -->
@@ -370,6 +357,9 @@
 </div>
 
 <!-- My Flights -->
+<button class="mf-toggle" id="mfToggle" aria-expanded="false">
+  <span class="star">★</span> My Flights
+</button>
 <div class="mf-panel" id="mfPanel">
   <div class="mf-head">
     <div class="mf-title">MY FLIGHTS</div>
