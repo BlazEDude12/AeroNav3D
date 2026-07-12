@@ -1,6 +1,6 @@
 # AeroNav3D
 
-**Live site: https://aeronav3d.vercel.app**
+**Live site: [https://aeronav3d.vercel.app](https://aeronav3d.blazedude12.workers.dev/)**
 
 An interactive 3D globe showing live air traffic worldwide. Click any plane to
 see its altitude, speed, and a glowing trail of where it's been. Sign in to
