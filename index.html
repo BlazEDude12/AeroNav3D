@@ -241,6 +241,33 @@
   .route-mid svg{display:block;transform:rotate(90deg);}
   .route-note{font-size:11px;color:var(--muted);line-height:1.5;text-align:center;}
   .route-strip+.route-note{margin-top:8px;}
+  /* Live flight progress: glowing gradient bar with a riding plane marker */
+  .route-prog{margin-top:12px;}
+  .rp-row{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:10px;color:var(--muted);letter-spacing:.05em;}
+  .rp-row b{color:var(--text);font-size:12.5px;font-weight:650;
+    font-variant-numeric:tabular-nums;letter-spacing:0;}
+  .rp-bar{
+    position:relative;height:6px;border-radius:99px;margin:9px 0 0;
+    background:rgba(255,255,255,.07);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.55),inset 0 -1px 0 rgba(255,255,255,.05);
+  }
+  .rp-fill{
+    position:absolute;left:0;top:0;bottom:0;border-radius:99px;width:0;
+    background:linear-gradient(90deg,#2f86ff,var(--accent));
+    box-shadow:0 0 9px rgba(76,195,255,.55),inset 0 1px 0 rgba(255,255,255,.35);
+    transition:width 1s linear;
+  }
+  .rp-plane{
+    position:absolute;left:0;top:50%;transform:translate(-50%,-50%);
+    transition:left 1s linear;pointer-events:none;
+    filter:drop-shadow(0 0 4px rgba(76,195,255,.8)) drop-shadow(0 1px 2px rgba(0,0,0,.7));
+  }
+  .rp-eta{
+    margin-top:9px;text-align:center;font-size:10.5px;color:var(--muted);
+    letter-spacing:.04em;
+  }
+  .rp-eta b{color:var(--text);font-weight:650;font-variant-numeric:tabular-nums;}
   .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;padding:14px 16px;}
   .panel-grid span{display:block;font-size:10px;letter-spacing:.18em;color:var(--muted);}
   .panel-grid b{font-size:17px;font-weight:600;}
@@ -883,6 +910,7 @@ const routeCache = new Map(); // callsign -> {airports, plausible} | null
 let routeHex = null;          // aircraft whose route is displayed
 let routeMarkers = [];        // departure/destination airport entities
 let destLine = null;          // dashed great circle: aircraft -> destination
+let routeEnds = null;         // {dep, dest} of the displayed route, for progress
 
 function clearRouteDisplay() {
   routeMarkers.forEach((e) => viewer.entities.remove(e));
@@ -891,6 +919,44 @@ function clearRouteDisplay() {
   fpRoute.style.display = "none";
   fpRoute.innerHTML = "";
   routeHex = null;
+  routeEnds = null;
+}
+
+/* Live progress along the route: distance covered/remaining from the
+ * great-circle legs, arrival estimated from ground speed. Refreshed each
+ * second by the panel updater so the bar and countdown move in real time. */
+function gcKm(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, R = 6371;
+  const a = Math.sin((lat2 - lat1) * r / 2) ** 2 +
+    Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function updateRouteProgress(ac) {
+  if (!routeEnds || routeHex !== ac.hex) return;
+  const el = document.getElementById("rpFill");
+  if (!el) return;
+  const { dep, dest } = routeEnds;
+  const covered = gcKm(dep.lat, dep.lon, ac.lat, ac.lon);
+  const left = gcKm(ac.lat, ac.lon, dest.lat, dest.lon);
+  const pct = Math.min(Math.max(covered / (covered + left) * 100, 0), 100);
+  el.style.width = pct + "%";
+  document.getElementById("rpPlane").style.left = pct + "%";
+  document.getElementById("rpCovered").textContent = Math.round(covered).toLocaleString() + " km";
+  document.getElementById("rpLeft").textContent = Math.round(left).toLocaleString() + " km";
+  const eta = document.getElementById("rpEta");
+  const gs = typeof ac.gs === "number" ? ac.gs : 0;
+  if (gs > 80 && left > 5) {
+    const mins = Math.round(left / (gs * 1.852) * 60);
+    const h = Math.floor(mins / 60), m = mins % 60;
+    const when = new Date(Date.now() + mins * 60000)
+      .toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    eta.innerHTML = `Landing in <b>${h ? h + " h " : ""}${m} min</b> · ` +
+      `arrival <b>≈ ${when}</b> <span style="opacity:.65">(estimated)</span>`;
+  } else if (left <= 5) {
+    eta.innerHTML = "<b>Arriving</b>";
+  } else {
+    eta.textContent = "";
+  }
 }
 
 function routeNote(text) {
@@ -942,6 +1008,7 @@ async function showRoute(hex) {
   const dep = route.airports[0];
   const dest = route.airports[route.airports.length - 1];
   const city = (ap) => (ap.location || ap.name || "").split(",")[0];
+  const canProgress = typeof dep.lat === "number" && typeof dest.lat === "number";
   fpRoute.innerHTML =
     '<div class="route-strip">' +
       `<div class="route-ap"><b>${dep.iata || dep.icao}</b><span>${city(dep)}</span></div>` +
@@ -951,8 +1018,22 @@ async function showRoute(hex) {
       "</div>" +
       `<div class="route-ap"><b>${dest.iata || dest.icao}</b><span>${city(dest)}</span></div>` +
     "</div>" +
+    (canProgress ?
+      '<div class="route-prog">' +
+        '<div class="rp-row"><span><b id="rpCovered">—</b> covered</span>' +
+        '<span><b id="rpLeft">—</b> to go</span></div>' +
+        '<div class="rp-bar"><div class="rp-fill" id="rpFill"></div>' +
+          '<svg class="rp-plane" id="rpPlane" width="15" height="15" viewBox="0 0 24 24" fill="#eaf3ff">' +
+          '<path transform="rotate(90 12 12)" d="M21.5 15.5v-2l-8.5-5V3.25a1.25 1.25 0 1 0-2.5 0V8.5l-8.5 5v2l8.5-2.5v5.2l-2.3 1.55v1.5L12 20l3.8 1.25v-1.5L13.5 18.2V13l8 2.5Z"/></svg>' +
+        "</div>" +
+        '<div class="rp-eta" id="rpEta"></div>' +
+      "</div>" : "") +
     (route.plausible ? "" : '<div class="route-note">Route on file may not match this flight</div>');
   fpRoute.style.display = "block";
+  if (canProgress) {
+    routeEnds = { dep, dest };
+    updateRouteProgress(f.data);
+  }
   addRouteVisuals(hex, dep, dest);
 }
 
@@ -1529,6 +1610,7 @@ function updateFlightPanel(ac) {
   updateAirlineLogo(callsign);
   updateAircraftPhoto(ac);
   updateAircraftMeta(ac.hex);
+  updateRouteProgress(ac);
   const airline = airlineFor(callsign);
   const rec = flights.get(ac.hex);
   const dtSec = rec ? (Date.now() - rec.fetchedAt) / 1000 : 0;
