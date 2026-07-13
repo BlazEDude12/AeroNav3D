@@ -681,7 +681,31 @@ function altitudeColor(altFt) {
   return Cesium.Color.fromHsl((55 + t * 185) / 360, 0.9, 0.55, 0.95);
 }
 
-function makeTrailPrimitive(positions, altsFt) {
+// Densify the raw 6–30 s position fixes with a Catmull-Rom spline so turns
+// render as smooth curves instead of polyline corners (FR24-style). The
+// curve still passes through every real data point.
+function smoothTrail(positions, altsFt) {
+  if (positions.length < 3) return { positions, altsFt };
+  const spline = new Cesium.CatmullRomSpline({
+    times: positions.map((_, i) => i),
+    points: positions
+  });
+  const SUB = 8;
+  const outPos = [], outAlt = [];
+  for (let i = 0; i < positions.length - 1; i++) {
+    for (let s = 0; s < SUB; s++) {
+      const f = s / SUB;
+      outPos.push(spline.evaluate(i + f));
+      outAlt.push(altsFt[i] * (1 - f) + altsFt[i + 1] * f);
+    }
+  }
+  outPos.push(positions[positions.length - 1]);
+  outAlt.push(altsFt[altsFt.length - 1]);
+  return { positions: outPos, altsFt: outAlt };
+}
+
+function makeTrailPrimitive(rawPositions, rawAltsFt) {
+  const { positions, altsFt } = smoothTrail(rawPositions, rawAltsFt);
   return viewer.scene.primitives.add(new Cesium.Primitive({
     geometryInstances: new Cesium.GeometryInstance({
       geometry: new Cesium.PolylineGeometry({
