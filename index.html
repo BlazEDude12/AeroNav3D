@@ -449,6 +449,22 @@
     .mf-toggle{top:12px;right:12px;padding:8px 12px;}
     .mf-panel{top:64px;right:12px;left:auto;width:248px;}
   }
+  /* Live airport weather (METAR) */
+  .wx-card{
+    position:absolute;top:72px;right:20px;z-index:10;width:300px;
+    padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.55;
+    background:rgba(10,16,30,.88);border:1px solid rgba(76,195,255,.28);color:#dfe9f5;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:none;
+  }
+  .wx-card .wx-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+  .wx-card .wx-head b{font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .wx-card .wx-close{cursor:pointer;color:#8fa3bd;background:none;border:none;font-size:14px;line-height:1;padding:2px;}
+  .wx-cat{flex:0 0 auto;font-size:10px;font-weight:700;letter-spacing:.08em;padding:1px 7px;border-radius:4px;border:1px solid currentColor;}
+  .wx-card .wx-raw{margin-top:7px;font-size:10px;color:#8fa3bd;word-break:break-all;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  .rp-wx{margin-top:10px;font-size:11px;color:var(--muted);display:none;align-items:center;gap:7px;flex-wrap:wrap;}
+  .rp-wx b{color:#eaf3ff;font-weight:600;}
+  @media (max-width:640px){ .wx-card{top:auto;bottom:76px;right:12px;left:12px;width:auto;} }
 </style>
 </head>
 <body>
@@ -516,6 +532,9 @@
 
 <!-- Missing-key notice -->
 <div class="notice" id="notice"></div>
+
+<!-- Airport weather card (live METAR) -->
+<div class="wx-card" id="wxCard"></div>
 
 <!-- Flight detail panel -->
 <div class="panel" id="flightPanel">
@@ -975,6 +994,135 @@ function tzLabel(tz) {
   return `local · UTC${h >= 0 ? "+" : ""}${Number.isInteger(h) ? h : h.toFixed(1)}`;
 }
 
+/* ----- Live airport weather (METAR) -----
+ * Raw METARs from metar.vatsim.net: real-world observations, keyless and
+ * CORS-open. (aviationweather.gov serves the same data but sends no CORS
+ * headers, so browsers can't fetch it directly.) Cached 10 min to match
+ * the mirror's own cache; failures retry after 1 min. */
+const METAR_CAT_COLORS = { VFR: "#39d98a", MVFR: "#4cc3ff", IFR: "#ff5c5c", LIFR: "#c86bff" };
+const metarCache = new Map(); // icao -> {t, wx|null}
+async function fetchMetar(icao) {
+  if (!icao) return null;
+  const hit = metarCache.get(icao);
+  if (hit && Date.now() - hit.t < (hit.wx ? 600000 : 60000)) return hit.wx;
+  let wx = null;
+  try {
+    const res = await fetch("https://metar.vatsim.net/" + encodeURIComponent(icao));
+    const raw = res.ok ? (await res.text()).trim().split("\n")[0] : "";
+    if (raw && raw.startsWith(icao)) wx = metarWx(raw);
+  } catch (e) { /* offline — leave null */ }
+  metarCache.set(icao, { t: Date.now(), wx });
+  return wx;
+}
+
+/* Decode the handful of METAR groups the UI shows: wind, visibility,
+ * temperature, cloud layers and present weather. RMK and anything
+ * unrecognised is ignored. */
+function parseMetar(raw) {
+  const o = { raw, wdir: null, wspd: null, wgst: null, visMi: null, tempC: null, clouds: [], wx: [] };
+  const WXRE = /^(\+|-|VC)?(?:MI|BC|PR|DR|BL|SH|TS|FZ)*(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PO|SQ|FC|SS|DS)+$/;
+  const toks = raw.trim().split(/\s+/);
+  for (let i = 0; i < toks.length; i++) {
+    const tok = toks[i];
+    if (tok === "RMK") break;
+    let m;
+    if ((m = tok.match(/^(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(KT|MPS)$/))) {
+      const f = m[4] === "MPS" ? 1.944 : 1; // knots everywhere
+      o.wdir = m[1] === "VRB" ? "VRB" : parseInt(m[1]);
+      o.wspd = Math.round(parseInt(m[2]) * f);
+      if (m[3]) o.wgst = Math.round(parseInt(m[3]) * f);
+    } else if (tok === "CAVOK") {
+      o.visMi = 6.21; // ">= 10 km"
+      o.clouds.push({ cover: "CLR", base: null });
+    } else if (o.visMi === null && o.wdir !== null && (m = tok.match(/^(\d{4})(NDV)?$/))) {
+      const met = parseInt(m[1]); // international: metres, 9999 = unlimited
+      o.visMi = met >= 9999 ? 6.21 : met / 1609.34;
+    } else if ((m = tok.match(/^M?(\d+)(?:\/(\d+))?SM$/))) {
+      let v = m[2] ? parseInt(m[1]) / parseInt(m[2]) : parseInt(m[1]);
+      if (m[2] && i > 0 && /^\d$/.test(toks[i - 1])) v += parseInt(toks[i - 1]); // "1 1/2SM"
+      o.visMi = v;
+    } else if ((m = tok.match(/^(M?\d{2})\/(M?\d{2})?$/))) {
+      o.tempC = parseInt(m[1].replace("M", "-"));
+    } else if ((m = tok.match(/^(FEW|SCT|BKN|OVC|VV)(\d{3})/))) {
+      o.clouds.push({ cover: m[1] === "VV" ? "OVX" : m[1], base: parseInt(m[2]) * 100 });
+    } else if (/^(CLR|SKC|NSC|NCD)$/.test(tok)) {
+      o.clouds.push({ cover: "CLR", base: null });
+    } else if (i > 0 && WXRE.test(tok)) {
+      o.wx.push(tok);
+    }
+  }
+  return o;
+}
+
+function metarSkyText(o) {
+  if (o.wx.length) {
+    const t = metarWxText(o.wx[0]);
+    if (t) return t;
+  }
+  const order = { OVX: 6, OVC: 5, BKN: 4, SCT: 3, FEW: 2, CLR: 1 };
+  const names = { OVX: "OBSCURED", OVC: "OVERCAST", BKN: "BROKEN", SCT: "SCATTERED", FEW: "FEW CLOUDS", CLR: "CLEAR" };
+  let best = null;
+  for (const c of o.clouds) if (order[c.cover] && (!best || order[c.cover] > order[best])) best = c.cover;
+  return best ? names[best] : "CLEAR";
+}
+function metarWxText(tok) {
+  const M = { RA: "RAIN", SN: "SNOW", DZ: "DRIZZLE", TS: "THUNDERSTORM", FG: "FOG", BR: "MIST",
+    HZ: "HAZE", FU: "SMOKE", GR: "HAIL", GS: "SMALL HAIL", PL: "ICE PELLETS", SG: "SNOW GRAINS",
+    SQ: "SQUALLS", DS: "DUST STORM", SS: "SANDSTORM", PO: "DUST WHIRLS", SA: "SAND", DU: "DUST",
+    VA: "ASH", IC: "ICE CRYSTALS", UP: "PRECIP", SH: "SHOWERS", FZ: "FREEZING", MI: "SHALLOW",
+    BC: "PATCHES", PR: "PARTIAL", DR: "DRIFTING", BL: "BLOWING", VC: "NEARBY" };
+  let pre = "", i = 0;
+  if (tok[0] === "+") { pre = "HEAVY "; i = 1; }
+  else if (tok[0] === "-") { pre = "LIGHT "; i = 1; }
+  const parts = [];
+  while (i < tok.length - 1) { const cd = tok.slice(i, i + 2); if (M[cd]) parts.push(M[cd]); i += 2; }
+  return parts.length ? pre + parts.join(" ") : null;
+}
+
+/* Normalise a raw METAR into display strings + the standard VFR/MVFR/
+ * IFR/LIFR flight category (from ceiling and visibility). */
+function metarWx(raw) {
+  const o = parseMetar(raw);
+  let ceil = Infinity;
+  for (const c of o.clouds)
+    if ((c.cover === "BKN" || c.cover === "OVC" || c.cover === "OVX") && c.base != null)
+      ceil = Math.min(ceil, c.base);
+  let cat = "VFR";
+  if (ceil < 500 || (o.visMi != null && o.visMi < 1)) cat = "LIFR";
+  else if (ceil < 1000 || (o.visMi != null && o.visMi < 3)) cat = "IFR";
+  else if (ceil <= 3000 || (o.visMi != null && o.visMi <= 5)) cat = "MVFR";
+  const spd = o.wspd || 0;
+  let wind = "—";
+  if (o.wdir === "VRB") wind = "VRB " + spd + " kt";
+  else if (o.wdir != null) wind = spd === 0 ? "calm" : String(o.wdir).padStart(3, "0") + "° " + spd + " kt";
+  else if (spd) wind = spd + " kt";
+  if (o.wgst) wind += " G" + o.wgst;
+  return {
+    temp: o.tempC != null ? o.tempC + "°C" : "—",
+    wind,
+    vis: o.visMi != null ? (o.visMi * 1.609).toFixed(1) + " km" : "—",
+    cond: metarSkyText(o),
+    cat,
+    color: METAR_CAT_COLORS[cat],
+    raw
+  };
+}
+
+/* Compact weather card for an airport picked from search. */
+const wxCard = document.getElementById("wxCard");
+async function showAirportWx(a) { // a = [iata, icao, name, city, lat, lon]
+  const wx = await fetchMetar(a[1]);
+  if (!wx) return; // no METAR for this field — show nothing
+  wxCard.innerHTML =
+    `<div class="wx-head"><b>${a[0]} · ${a[2]}</b>` +
+    `<span class="wx-cat" style="color:${wx.color}">${wx.cat}</span>` +
+    `<button class="wx-close" aria-label="Close weather">✕</button></div>` +
+    `${wx.temp} · ${wx.cond} · wind ${wx.wind} · vis ${wx.vis}` +
+    `<div class="wx-raw">${wx.raw}</div>`;
+  wxCard.style.display = "block";
+  wxCard.querySelector(".wx-close").onclick = () => { wxCard.style.display = "none"; };
+}
+
 function gcKm(lat1, lon1, lat2, lon2) {
   const r = Math.PI / 180, R = 6371;
   const a = Math.sin((lat2 - lat1) * r / 2) ** 2 +
@@ -1093,8 +1241,17 @@ async function showRoute(hex) {
         "</div>" +
         '<div class="rp-eta" id="rpEta"></div>' +
       "</div>" : "") +
+    '<div class="rp-wx" id="rpWx"></div>' +
     (route.plausible ? "" : '<div class="route-note">Route on file may not match this flight</div>');
   fpRoute.style.display = "block";
+  // Live weather at the destination: decoded METAR + flight category
+  if (dest.icao) fetchMetar(dest.icao).then((wx) => {
+    const el = document.getElementById("rpWx");
+    if (!wx || routeHex !== hex || !el) return;
+    el.innerHTML = `<span>ARRIVAL WX</span><b>${wx.temp} · ${wx.cond} · ${wx.wind}</b>` +
+      `<span class="wx-cat" style="color:${wx.color}">${wx.cat}</span>`;
+    el.style.display = "flex";
+  });
   if (canProgress) {
     routeEnds = { dep, dest };
     updateRouteProgress(f.data);
@@ -2126,8 +2283,11 @@ function runSearchAction(el) {
     setAirlineFilter(el.dataset.prefixes.split(","), el.dataset.name);
   } else if (act === "airport") {
     const a = AIRPORTS.find(x => x[0] === el.dataset.iata);
-    if (a) viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(a[5], a[4], 120000), duration: 1.6 });
+    if (a) {
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(a[5], a[4], 120000), duration: 1.6 });
+      showAirportWx(a); // live METAR card for the selected airport
+    }
   } else if (act === "route") {
     const a = AIRPORTS.find(x => x[0] === el.dataset.a);
     const b = AIRPORTS.find(x => x[0] === el.dataset.b);
