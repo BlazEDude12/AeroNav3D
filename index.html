@@ -1145,6 +1145,36 @@ function gcKm(lat1, lon1, lat2, lon2) {
     Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lon2 - lon1) * r / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
+
+/* Routeset databases return the aircraft's whole multi-leg routing, e.g.
+ * SKW3897 = SEA-SJC-SEA or ASA62 = FAI-ANC-JNU-SIT-KTN-SEA. Taking the
+ * first and last airport would claim "SEA -> SEA" over a 27-hour day, so
+ * pick the single leg this aircraft is actually flying: the consecutive
+ * pair whose path the plane sits closest to. Round trips make two legs
+ * share one great circle, so heading breaks the tie. */
+function currentLeg(airports, ac) {
+  const pts = airports.filter((a) => typeof a.lat === "number" && typeof a.lon === "number");
+  if (pts.length < 2) return [null, null];
+  if (pts.length === 2) return [pts[0], pts[1]];
+  let best = null, bestScore = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    // How far off the direct A->B path the aircraft sits (0 = on it)
+    const detour = gcKm(a.lat, a.lon, ac.lat, ac.lon) + gcKm(ac.lat, ac.lon, b.lat, b.lon)
+                 - gcKm(a.lat, a.lon, b.lat, b.lon);
+    // Tie-break: is the aircraft actually pointing at this leg's arrival?
+    let headPenalty = 0;
+    if (typeof ac.track === "number") {
+      const brg = bearingDeg(ac.lat, ac.lon, b.lat, b.lon);
+      const off = Math.abs(((brg - ac.track + 540) % 360) - 180); // 0 = dead on
+      headPenalty = off * 3; // only decides near-ties; detour dominates otherwise
+    }
+    const score = detour + headPenalty;
+    if (score < bestScore) { bestScore = score; best = [a, b]; }
+  }
+  return best || [pts[0], pts[pts.length - 1]];
+}
+
 function updateRouteProgress(ac) {
   if (!routeEnds || routeHex !== ac.hex) return;
   const el = document.getElementById("rpFill");
@@ -1230,8 +1260,11 @@ async function showRoute(hex) {
     routeNote("Route unknown — no flight-plan data for this callsign");
     return;
   }
-  const dep = route.airports[0];
-  const dest = route.airports[route.airports.length - 1];
+  const [dep, dest] = currentLeg(route.airports, f.data);
+  if (!dep || !dest) {
+    routeNote("Route unknown — no flight-plan data for this callsign");
+    return;
+  }
   const city = (ap) => (ap.location || ap.name || "").split(",")[0];
   const canProgress = typeof dep.lat === "number" && typeof dest.lat === "number";
   fpRoute.innerHTML =
