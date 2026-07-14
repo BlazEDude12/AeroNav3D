@@ -1488,10 +1488,37 @@ function flightAltitudeMeters(ac) {
   return typeof ac.alt_baro === "number" ? Math.max(ac.alt_baro, 0) * FT_TO_M : 0;
 }
 
+// Initial bearing (degrees) from point 1 to point 2
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180;
+  const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) -
+            Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+
+// Direction the icon should point. Surface position messages often omit
+// track (or report it stale mid-turn), so while taxiing the direction the
+// aircraft actually moved between updates wins — the icon then always
+// points the way its trail is going.
+function planeHeading(f) {
+  const ac = f.data;
+  if (ac.alt_baro === "ground" &&
+      typeof f.moveBearing === "number" && (ac.gs || 0) > 1) {
+    return f.moveBearing;
+  }
+  if (typeof ac.track === "number") return ac.track;
+  if (typeof ac.true_heading === "number") return ac.true_heading;
+  if (typeof f.moveBearing === "number") return f.moveBearing;
+  return 0;
+}
+
 // Dead-reckoned position dt seconds after the last report
-function flightPosition(ac, dt) {
+function flightPosition(ac, dt, hdgDeg) {
   const gs = typeof ac.gs === "number" ? ac.gs * KNOTS_TO_MS : 0;
-  const trk = Cesium.Math.toRadians(typeof ac.track === "number" ? ac.track : 0);
+  const deg = typeof hdgDeg === "number" ? hdgDeg
+    : (typeof ac.track === "number" ? ac.track : 0);
+  const trk = Cesium.Math.toRadians(deg);
   const d = gs * dt;
   const lat = ac.lat + (d * Math.cos(trk)) / 111320;
   const lon = ac.lon + (d * Math.sin(trk)) / (111320 * Math.cos(Cesium.Math.toRadians(ac.lat)) || 1);
@@ -1561,6 +1588,11 @@ async function pollFlights() {
       f.billboard.height = ic.size;
       if (selectedHex !== ac.hex) f.billboard.color = ic.color;
     }
+    // Direction of actual movement since the previous fix — used to point
+    // taxiing aircraft the way they are really going (see planeHeading)
+    if (f.data && (f.data.lat !== ac.lat || f.data.lon !== ac.lon)) {
+      f.moveBearing = bearingDeg(f.data.lat, f.data.lon, ac.lat, ac.lon);
+    }
     f.data = ac;
     f.fetchedAt = now;
     extendTrail(ac);
@@ -1587,8 +1619,9 @@ scene.preRender.addEventListener(() => {
   const heading = viewer.camera.heading;
   flights.forEach((f) => {
     if (!f.data) return;
-    f.billboard.position = flightPosition(f.data, (now - f.fetchedAt) / 1000);
-    f.billboard.rotation = heading - Cesium.Math.toRadians(typeof f.data.track === "number" ? f.data.track : 0);
+    const hdg = planeHeading(f);
+    f.billboard.position = flightPosition(f.data, (now - f.fetchedAt) / 1000, hdg);
+    f.billboard.rotation = heading - Cesium.Math.toRadians(hdg);
   });
 });
 
