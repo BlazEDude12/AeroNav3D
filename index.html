@@ -563,7 +563,7 @@
     <div><span>ALTITUDE</span><b id="fpAlt">—</b></div>
     <div><span>SPEED</span><b id="fpSpd">—</b></div>
     <div><span>TRACK</span><b id="fpTrk">—</b></div>
-    <div><span>MODE</span><b id="fpMode">—</b></div>
+    <div><span>STATUS</span><b id="fpMode">—</b></div>
     <div><span>MSN</span><b id="fpMsn">—</b></div>
     <div><span>AGE</span><b id="fpAge">—</b></div>
     <div style="grid-column:1/-1"><span>COUNTRY OF REGISTRATION</span><b id="fpCountry">—</b></div>
@@ -1593,6 +1593,17 @@ async function pollFlights() {
     if (f.data && (f.data.lat !== ac.lat || f.data.lon !== ac.lon)) {
       f.moveBearing = bearingDeg(f.data.lat, f.data.lon, ac.lat, ac.lon);
     }
+    // Remember when the aircraft was last on the ground, its first altitude
+    // after lifting off, and when it was last genuinely descending —
+    // flightMode uses this history to recognise takeoffs and landings even
+    // when the broadcast vertical rate lags the real motion.
+    if (ac.alt_baro === "ground") { f.groundAt = now; f.liftAlt = null; }
+    else {
+      if (f.groundAt && f.liftAlt == null && typeof ac.alt_baro === "number")
+        f.liftAlt = ac.alt_baro;
+      if (typeof ac.baro_rate === "number" && ac.baro_rate <= -400)
+        f.sinkAt = now;
+    }
     f.data = ac;
     f.fetchedAt = now;
     extendTrail(ac);
@@ -1868,23 +1879,89 @@ function fmtAlt(ac, dtSec) {
   if (dtSec && typeof ac.baro_rate === "number") alt += ac.baro_rate * (dtSec / 60);
   return (Math.round(alt / 25) * 25).toLocaleString() + " ft";
 }
-/* Flight mode from vertical rate + altitude + ground state:
- *   |v/r| ≤ 100 ft/min -> Cruising      (holding altitude)
- *   |v/r| < 400 ft/min -> Level Flight  (drifting slightly)
- *   v/r ≥ 400 ft/min   -> Climbing, or Taking Off below 3,500 ft
- *   v/r ≤ -400 ft/min  -> Descending, or Landing below 3,500 ft
- *   on ground          -> Takeoff Roll when moving fast, else On Ground */
+/* Flight mode — one of six states:
+ *   On Ground    stationary or taxiing
+ *   Takeoff      runway roll until ~1,000 ft above the runway
+ *   Climbing     v/r ≥ 400 ft/min, past 1,000 ft
+ *   Cruising     holding altitude (|v/r| < 400 ft/min)
+ *   Descending   v/r ≤ -400 ft/min above 500 ft
+ *   Landing      under ~500 ft on final, through flare and rollout
+ * Altitude bounds are measured above the runway: the airport's own
+ * elevation when the route is known, else the terrain right under the
+ * aircraft — so high fields like Denver or Bangalore work too. */
+/* Ground elevation below a point via Open-Meteo (free, keyless,
+ * CORS-open — same service the timezone lookup uses), cached per ~11 km
+ * cell. Non-blocking: returns null until the fetch lands; the panel
+ * re-evaluates every second so the answer arrives within a tick or two. */
+const elevCache = new Map();
+function groundElevFt(lat, lon) {
+  const key = lat.toFixed(1) + "," + lon.toFixed(1);
+  const hit = elevCache.get(key);
+  if (hit !== undefined) return hit; // number, or null while in flight
+  elevCache.set(key, null);
+  fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}`)
+    .then(r => r.json())
+    .then(j => {
+      if (Array.isArray(j.elevation) && typeof j.elevation[0] === "number")
+        elevCache.set(key, Math.round(j.elevation[0] * 3.28084));
+      else elevCache.delete(key);
+    })
+    .catch(() => elevCache.delete(key)); // offline — retry on a later call
+  return null;
+}
+function inTerminalPhase(ac, ap, ceilFt, maxKm) {
+  if (typeof ac.alt_baro !== "number") return false;
+  // Use the airport's own elevation when the aircraft is actually near
+  // it; otherwise — no route, or route data that doesn't match where the
+  // plane really is (diversions, bad databases) — measure against the
+  // terrain directly below instead.
+  let elev = null;
+  if (ap && typeof ap.lat === "number" && typeof ap.alt_feet === "number" &&
+      gcKm(ac.lat, ac.lon, ap.lat, ap.lon) <= maxKm)
+    elev = ap.alt_feet;
+  if (elev === null && ac.alt_baro < 10000)
+    elev = groundElevFt(ac.lat, ac.lon);
+  return ac.alt_baro < (elev ?? 0) + ceilFt;
+}
 function flightMode(ac) {
-  const gs = typeof ac.gs === "number" ? ac.gs : 0;
-  if (ac.alt_baro === "ground")
-    return gs > 40 ? ["Takeoff Roll", "#a5ff7a"] : ["On Ground", "#9aa7bd"];
+  const route = routeHex === ac.hex ? routeEnds : null;
+  const rec = flights.get(ac.hex);
+  const now = Date.now();
+  const sinkAgo = rec && rec.sinkAt ? now - rec.sinkAt : Infinity;
+  const groundAgo = rec && rec.groundAt ? now - rec.groundAt : Infinity;
+  if (ac.alt_baro === "ground") {
+    const gs = typeof ac.gs === "number" ? ac.gs : 0;
+    if (gs <= 40) return ["On Ground", "#c792ff"];
+    // Fast on the runway: rolling out after touchdown if it was descending
+    // moments ago (or is at its arrival airport), else the takeoff roll.
+    const landed = sinkAgo < 180000 ||
+      (route && route.dest && typeof route.dest.lat === "number" &&
+        gcKm(ac.lat, ac.lon, route.dest.lat, route.dest.lon) <= 55);
+    return landed ? ["Landing", "#ff8a65"] : ["Takeoff", "#a5ff7a"];
+  }
   const vr = typeof ac.baro_rate === "number" ? ac.baro_rate : null;
+  // Seen on the runway moments ago and now airborne — and not arriving:
+  // that's a takeoff no matter what the (often lagging) vertical rate
+  // says. Hands over to Climbing ~1,000 ft above the runway, or 3 min.
+  if (groundAgo < 180000 && sinkAgo >= 180000 &&
+      (vr === null || vr > -400) &&
+      !(typeof ac.alt_baro === "number" && typeof rec.liftAlt === "number" &&
+        ac.alt_baro - rec.liftAlt >= 1000))
+    return ["Takeoff", "#a5ff7a"];
   if (vr === null) return ["—", ""];
-  const low = typeof ac.alt_baro === "number" && ac.alt_baro < 3500;
-  if (vr >= 400) return low ? ["Taking Off", "#a5ff7a"] : ["Climbing", "#39ff8e"];
-  if (vr <= -400) return low ? ["Landing", "#ff8a65"] : ["Descending", "#ffb84d"];
-  if (Math.abs(vr) <= 100) return ["Cruising", "#4cc3ff"];
-  return ["Level Flight", "#8fb7ff"];
+  if (vr >= 400)
+    // No ground history (first seen airborne): fall back to position —
+    // right above the departure runway still counts as the takeoff phase.
+    return inTerminalPhase(ac, route && route.dep, 1000, 15)
+      ? ["Takeoff", "#a5ff7a"] : ["Climbing", "#39ff8e"];
+  if (vr <= -400)
+    return inTerminalPhase(ac, route && route.dest, 500, 55) // short final
+      ? ["Landing", "#ff8a65"] : ["Descending", "#ffb84d"];
+  // Level and low right after a steady descent: the flare and touchdown —
+  // the baro can lag the runway by a few seconds. Still landing.
+  if (sinkAgo < 90000 && inTerminalPhase(ac, route && route.dest, 500, 55))
+    return ["Landing", "#ff8a65"];
+  return ["Cruising", "#4cc3ff"];
 }
 
 function updateFlightPanel(ac) {
