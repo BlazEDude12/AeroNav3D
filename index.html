@@ -209,10 +209,12 @@
   .panel-head button:hover{color:var(--text);}
   .panel-photo{position:relative;display:none;border-bottom:1px solid var(--border);}
   .panel-photo img{display:block;width:100%;height:210px;object-fit:cover;}
+  /* Top-right so it can never collide with the progress dots below */
   .panel-photo a{
-    position:absolute;right:6px;bottom:6px;font-size:9px;letter-spacing:.04em;
-    color:rgba(255,255,255,.9);background:rgba(0,0,0,.5);padding:2px 7px;
-    border-radius:6px;text-decoration:none;
+    position:absolute;right:6px;top:6px;font-size:8.5px;letter-spacing:.03em;
+    color:rgba(255,255,255,.82);background:rgba(0,0,0,.42);padding:2px 6px;
+    border-radius:5px;text-decoration:none;max-width:calc(100% - 12px);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .panel-photo a:hover{background:rgba(0,0,0,.75);}
   .ph-nav{
@@ -1324,6 +1326,81 @@ async function showRoute(hex) {
 
 // Airport markers + a dashed great circle from the live aircraft position
 // to the destination (matches the search feature's route-arc styling).
+/* ----- Runway overlay -----
+ * Runway centrelines and their identifiers (e.g. 16L/34R) from the
+ * OurAirports dataset shipped as db/runways.json. Drawn only when the
+ * camera is low enough for them to mean anything, for airports in view.
+ * Loaded lazily so the 0.9 MB file never costs a first paint. */
+const RUNWAY_SHOW_ALT = 60000;   // metres: below this, runways are drawn
+const RUNWAY_LIFT_M = 30;        // metres above the surface, to avoid z-fighting
+let runwayDb = null, runwayLoading = null;
+let runwayEntities = [], runwayKey = "";
+
+function loadRunwayDb() {
+  if (runwayDb) return Promise.resolve(runwayDb);
+  if (!runwayLoading) {
+    runwayLoading = fetch("db/runways.json")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((j) => (runwayDb = j))
+      .catch(() => (runwayDb = {}));
+  }
+  return runwayLoading;
+}
+
+function clearRunways() {
+  runwayEntities.forEach((e) => viewer.entities.remove(e));
+  runwayEntities = [];
+  runwayKey = "";
+}
+
+async function updateRunways() {
+  const cam = viewer.camera.positionCartographic;
+  if (cam.height > RUNWAY_SHOW_ALT) { if (runwayEntities.length) clearRunways(); return; }
+  const lat = Cesium.Math.toDegrees(cam.latitude);
+  const lon = Cesium.Math.toDegrees(cam.longitude);
+  // Redraw only when the camera has moved a meaningful distance
+  const key = lat.toFixed(1) + "," + lon.toFixed(1);
+  if (key === runwayKey) return;
+  runwayKey = key;
+  const db = await loadRunwayDb();
+  if (runwayKey !== key) return; // camera moved on while loading
+  runwayEntities.forEach((e) => viewer.entities.remove(e));
+  runwayEntities = [];
+  for (const [ident, rwys] of Object.entries(db)) {
+    for (const [le, he, laLat, laLon, hbLat, hbLon, lenFt] of rwys) {
+      if (gcKm(lat, lon, laLat, laLon) > 40) continue; // only what's in view
+      // Lifted a few metres: geometry sitting exactly on the ellipsoid
+      // z-fights with the globe surface and disappears. No terrain is
+      // configured, so a small constant offset is all that's needed.
+      const a = Cesium.Cartesian3.fromDegrees(laLon, laLat, RUNWAY_LIFT_M);
+      const b = Cesium.Cartesian3.fromDegrees(hbLon, hbLat, RUNWAY_LIFT_M);
+      runwayEntities.push(viewer.entities.add({
+        polyline: {
+          positions: [a, b], width: 3,
+          material: Cesium.Color.fromCssColorString("#eaf3ff").withAlpha(0.8)
+        }
+      }));
+      // Identifier at each threshold, e.g. 16L at one end, 34R at the other
+      for (const [txt, pos] of [[le, a], [he, b]]) {
+        if (!txt) continue;
+        runwayEntities.push(viewer.entities.add({
+          position: pos,
+          label: {
+            text: txt,
+            font: "700 10px system-ui",
+            fillColor: Cesium.Color.WHITE,
+            showBackground: true,
+            backgroundColor: new Cesium.Color(0.05, 0.07, 0.12, 0.75),
+            backgroundPadding: new Cesium.Cartesian2(4, 2),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, RUNWAY_SHOW_ALT)
+          }
+        }));
+      }
+    }
+  }
+}
+
 function addRouteVisuals(hex, dep, dest) {
   for (const ap of [dep, dest]) {
     if (typeof ap.lat !== "number" || typeof ap.lon !== "number") continue;
@@ -2577,6 +2654,7 @@ setInterval(pollFlights, FLIGHT_POLL_MS);
 let lastMovePoll = 0;
 viewer.camera.moveEnd.addEventListener(() => {
   if (Date.now() - lastMovePoll > 2500) { lastMovePoll = Date.now(); pollFlights(); }
+  updateRunways();
 });
 
 /* ----- Favorites & sign-in ----- */
