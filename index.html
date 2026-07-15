@@ -698,7 +698,28 @@ viewer.clock.shouldAnimate = true;
 // NASA Black Marble (VIIRS) city lights, shown only on the night side of
 // the terminator via the layer's day/night alpha blending.
 let nightLayer = null;
+let nightTint = null;
+// Solid dark tile used to tint the night side at close zoom (below, the
+// zoom fade swaps it in as the coarse Black Marble tiles fade out).
+const NIGHT_TINT_URL = (() => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 8;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#0b1226"; // matches the globe base color
+  ctx.fillRect(0, 0, 8, 8);
+  return c.toDataURL();
+})();
 function addNightLights() {
+  // Night tint goes in first so the city lights render above it.
+  nightTint = viewer.imageryLayers.addImageryProvider(
+    new Cesium.UrlTemplateImageryProvider({
+      url: NIGHT_TINT_URL,
+      tilingScheme: new Cesium.GeographicTilingScheme(),
+      maximumLevel: 0
+    })
+  );
+  nightTint.dayAlpha = 0.0;
+  nightTint.nightAlpha = 0.0; // raised at close zoom by the fade below
   const layer = viewer.imageryLayers.addImageryProvider(
     new Cesium.UrlTemplateImageryProvider({
       url: "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png",
@@ -722,16 +743,20 @@ function addNightLights() {
 // city scale they upsample into a blown-out glow that buries the base map
 // and the planes, so ease the overlay — and its low-zoom boost — off as
 // the camera descends, letting the base imagery show through up close.
+// The solid tint ramps up in its place so the night side still reads as
+// night (a dusk-like cast) instead of snapping to daytime imagery.
 const NIGHT_FADE_TOP = 3_000_000;  // full lights above this camera height (m)
 const NIGHT_FADE_BOTTOM = 300_000; // fully faded below this
+const NIGHT_TINT_MAX = 0.45;       // tint strength once the lights are faded
 scene.preRender.addEventListener(() => {
-  if (!nightLayer) return;
+  if (!nightLayer || !nightTint) return;
   const h = scene.camera.positionCartographic.height;
   const t = Cesium.Math.clamp(
     (h - NIGHT_FADE_BOTTOM) / (NIGHT_FADE_TOP - NIGHT_FADE_BOTTOM), 0, 1);
   nightLayer.nightAlpha = Cesium.Math.lerp(0.3, 1.0, t);
   nightLayer.gamma = Cesium.Math.lerp(1.0, 0.5, t);
   nightLayer.brightness = Cesium.Math.lerp(1.0, 1.6, t);
+  nightTint.nightAlpha = Cesium.Math.lerp(NIGHT_TINT_MAX, 0.0, t);
 });
 
 /* ---------------- Google Maps base layer ---------------- */
