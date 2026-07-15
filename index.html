@@ -697,6 +697,7 @@ viewer.clock.shouldAnimate = true;
 
 // NASA Black Marble (VIIRS) city lights, shown only on the night side of
 // the terminator via the layer's day/night alpha blending.
+let nightLayer = null;
 function addNightLights() {
   const layer = viewer.imageryLayers.addImageryProvider(
     new Cesium.UrlTemplateImageryProvider({
@@ -714,7 +715,24 @@ function addNightLights() {
   layer.gamma = 0.5;
   layer.brightness = 1.6;
   layer.saturation = 1.2;
+  nightLayer = layer;
 }
+
+// The Black Marble tiles top out at level 8 (~600 m/pixel). Zoomed in to
+// city scale they upsample into a blown-out glow that buries the base map
+// and the planes, so ease the overlay — and its low-zoom boost — off as
+// the camera descends, letting the base imagery show through up close.
+const NIGHT_FADE_TOP = 3_000_000;  // full lights above this camera height (m)
+const NIGHT_FADE_BOTTOM = 300_000; // fully faded below this
+scene.preRender.addEventListener(() => {
+  if (!nightLayer) return;
+  const h = scene.camera.positionCartographic.height;
+  const t = Cesium.Math.clamp(
+    (h - NIGHT_FADE_BOTTOM) / (NIGHT_FADE_TOP - NIGHT_FADE_BOTTOM), 0, 1);
+  nightLayer.nightAlpha = Cesium.Math.lerp(0.3, 1.0, t);
+  nightLayer.gamma = Cesium.Math.lerp(1.0, 0.5, t);
+  nightLayer.brightness = Cesium.Math.lerp(1.0, 1.6, t);
+});
 
 /* ---------------- Google Maps base layer ---------------- */
 async function loadGoogleBaseLayer() {
