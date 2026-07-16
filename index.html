@@ -1463,16 +1463,39 @@ async function updateRunways() {
   }
 }
 
+// One shared map-pin icon for every airport marker on the globe: a bright
+// blue teardrop with a white rim and punched-out hole, drawn at 2x for
+// crisp edges. A single data URL keeps it to one texture-atlas entry.
+const AIRPORT_PIN = (() => {
+  const c = document.createElement("canvas");
+  c.width = 48; c.height = 64;
+  const x = c.getContext("2d");
+  x.scale(2, 2);
+  // Teardrop: round head, tapering to a point at the bottom centre
+  const pin = new Path2D(
+    "M12 1 C6 1 1.5 5.5 1.5 11.5 C1.5 16 5 20.5 12 31 C19 20.5 22.5 16 22.5 11.5 C22.5 5.5 18 1 12 1 Z"
+  );
+  x.fillStyle = "#4cc3ff";
+  x.fill(pin);
+  x.strokeStyle = "#eaf3ff";           // same bright white as the runway lines
+  x.lineWidth = 2;
+  x.stroke(pin);
+  x.globalCompositeOperation = "destination-out"; // punch the hole
+  x.beginPath();
+  x.arc(12, 11.5, 4.5, 0, Math.PI * 2);
+  x.fill();
+  return c.toDataURL();
+})();
+
 function addRouteVisuals(hex, dep, dest) {
   for (const ap of [dep, dest]) {
     if (typeof ap.lat !== "number" || typeof ap.lon !== "number") continue;
     routeMarkers.push(viewer.entities.add({
       position: Cesium.Cartesian3.fromDegrees(ap.lon, ap.lat),
-      point: {
-        pixelSize: 7,
-        color: Cesium.Color.fromCssColorString("#4cc3ff"),
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 1.5,
+      billboard: {
+        image: AIRPORT_PIN,
+        width: 24, height: 32,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM, // tip on the airport
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
       label: {
@@ -1482,7 +1505,7 @@ function addRouteVisuals(hex, dep, dest) {
         showBackground: true,
         backgroundColor: new Cesium.Color(0.05, 0.07, 0.12, 0.8),
         backgroundPadding: new Cesium.Cartesian2(6, 4),
-        pixelOffset: new Cesium.Cartesian2(0, -14),
+        pixelOffset: new Cesium.Cartesian2(0, -36), // clear the pin's head
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
