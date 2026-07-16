@@ -1474,7 +1474,8 @@ async function updateRunways() {
       }
     }
     // The map tiles' own airport glyph goes grey under the imagery tint;
-    // overlay the same vibrant pin used for route markers at every airport.
+    // overlay the same vibrant pin used for route markers at every airport,
+    // labelled like them too (IATA when known, otherwise the db ident).
     // If a route marker already pins this airport, it takes precedence —
     // adding ours too would show two pins a few hundred metres apart.
     const pinLat = cLat / ends, pinLon = cLon / ends;
@@ -1487,10 +1488,31 @@ async function updateRunways() {
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, RUNWAY_SHOW_ALT)
+        },
+        label: {
+          text: iataFor(ident),
+          font: "600 11px system-ui",
+          fillColor: Cesium.Color.WHITE,
+          showBackground: true,
+          backgroundColor: new Cesium.Color(0.05, 0.07, 0.12, 0.8),
+          backgroundPadding: new Cesium.Cartesian2(6, 4),
+          pixelOffset: new Cesium.Cartesian2(0, -36), // clear the pin's head
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, RUNWAY_SHOW_ALT)
         }
       }));
     }
   }
+}
+
+// IATA code for a runway-db ident (ICAO or US local code), from the search
+// db's major-hub list; small fields without an entry keep their ident.
+// Built lazily: AIRPORTS is declared further down the script.
+let icaoToIata = null;
+function iataFor(ident) {
+  if (!icaoToIata) icaoToIata = new Map(AIRPORTS.map((a) => [a[1], a[0]]));
+  return icaoToIata.get(ident) || ident;
 }
 
 // One shared map-pin icon for every airport marker on the globe: a bright
