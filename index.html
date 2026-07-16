@@ -1428,9 +1428,12 @@ async function updateRunways() {
   runwayEntities.forEach((e) => viewer.entities.remove(e));
   runwayEntities = [];
   for (const [ident, rwys] of Object.entries(db)) {
+    // Airport centre = mean of its runway thresholds, for the pin below
+    let cLat = 0, cLon = 0, ends = 0;
     for (const [le, he, laLat, laLon, hbLat, hbLon, lenFt] of rwys) {
       if (!isRealRunway(le, he)) continue; // skip water runways / helipads
       if (gcKm(lat, lon, laLat, laLon) > 40) continue; // only what's in view
+      cLat += laLat + hbLat; cLon += laLon + hbLon; ends += 2;
       // Lifted a few metres: geometry sitting exactly on the ellipsoid
       // z-fights with the globe surface and disappears. No terrain is
       // configured, so a small constant offset is all that's needed.
@@ -1459,6 +1462,20 @@ async function updateRunways() {
           }
         }));
       }
+    }
+    // The map tiles' own airport glyph goes grey under the imagery tint;
+    // overlay the same vibrant pin used for route markers at every airport.
+    if (ends) {
+      runwayEntities.push(viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(cLon / ends, cLat / ends, RUNWAY_LIFT_M),
+        billboard: {
+          image: AIRPORT_PIN,
+          width: 24, height: 32,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, RUNWAY_SHOW_ALT)
+        }
+      }));
     }
   }
 }
