@@ -2262,11 +2262,20 @@ function selectFlight(hex) {
   if (routeHex !== hex) showRoute(hex);
 }
 
+/* scene.pick returns only the topmost object, so a plane sitting under a
+ * runway centreline (or any other overlay) is unreachable. Drill through
+ * the first few hits and prefer a plane. */
+function pickPlaneId(pos) {
+  for (const p of scene.drillPick(pos, 5)) {
+    if (p && typeof p.id === "string" && p.id.startsWith("plane:")) return p.id;
+  }
+  return null;
+}
+
 const pickHandler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
 pickHandler.setInputAction((evt) => {
-  const picked = scene.pick(evt.position);
-  const id = picked && typeof picked.id === "string" ? picked.id : null;
-  if (id && id.startsWith("plane:")) {
+  const id = pickPlaneId(evt.position);
+  if (id) {
     selectFlight(id.slice(6));
   } else {
     closeFlightPanel();
@@ -2280,9 +2289,8 @@ const planeTipCs = document.getElementById("planeTipCs");
 planeTipLogo.addEventListener("error", () => { planeTipLogo.style.display = "none"; });
 let tipHex = null;
 pickHandler.setInputAction((evt) => {
-  const picked = scene.pick(evt.endPosition);
-  const id = picked && typeof picked.id === "string" ? picked.id : null;
-  if (id && id.startsWith("plane:")) {
+  const id = pickPlaneId(evt.endPosition);
+  if (id) {
     const hex = id.slice(6);
     const f = flights.get(hex);
     if (f) {
