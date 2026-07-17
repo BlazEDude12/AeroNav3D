@@ -108,6 +108,27 @@
   }
   .mt-opt.active{color:var(--text);}
   .mt-opt:hover{color:var(--text);}
+  /* ---------- Feature #9: density toggle ---------- */
+  .dens-toggle{
+    flex:none;display:flex;align-items:center;gap:7px;cursor:pointer;
+    padding:0 14px;--glass-radius:12px;color:var(--muted);
+    font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.07em;
+    transition:color .2s;
+  }
+  .dens-toggle:hover{color:var(--text);}
+  .dens-toggle[aria-pressed="true"]{color:var(--text);}
+  .dens-dot{
+    width:8px;height:8px;border-radius:50%;flex:none;
+    background:rgba(255,255,255,.22);transition:background .2s,box-shadow .2s;
+  }
+  .dens-toggle[aria-pressed="true"] .dens-dot{
+    background:var(--accent);box-shadow:0 0 8px rgba(76,195,255,.8);
+  }
+  @media (max-width:900px){
+    .dens-toggle .dens-label{display:none;}
+    .dens-toggle{padding:0 11px;}
+  }
+
   .search-chip{
     display:none;align-items:center;gap:6px;flex:none;cursor:pointer;
     font-size:11px;color:var(--accent);white-space:nowrap;
@@ -912,6 +933,10 @@
     <button class="mt-opt" data-mode="hybrid" role="tab">MAP</button>
     <button class="mt-opt" data-mode="satellite" role="tab">SATELLITE</button>
   </div>
+  <button class="dens-toggle glass" id="densToggle" aria-pressed="false"
+          title="Show where the live traffic is concentrated">
+    <span class="dens-dot" aria-hidden="true"></span><span class="dens-label">DENSITY</span>
+  </button>
 </div>
 <div class="search-results glass" id="searchResults"></div>
 
@@ -2593,6 +2618,8 @@ async function pollFlights(retry) {
   applyAirlineFilter();
   document.getElementById("brandTag").textContent =
     flights.size ? `Global Navigation · ${flights.size} live` : "Global Navigation";
+  // Rides the existing refresh — the density layer never polls for itself.
+  if (densityOn) drawDensity();
   if (selectedHex && flights.has(selectedHex)) updateFlightPanel(flights.get(selectedHex).data);
   if (mfPanel.classList.contains("open")) renderMyFlights();
 }
@@ -2609,6 +2636,145 @@ scene.preRender.addEventListener(() => {
     f.billboard.rotation = heading - Cesium.Math.toRadians(hdg);
   });
 });
+
+/* ----- Feature #9: live density layer -----
+ * A heat overlay built from the aircraft already in memory — the same set the
+ * "N LIVE" counter counts, which is what gives that number a shape. No extra
+ * request and no polling of its own: it redraws off the existing cycle, and
+ * never more than once every DENSITY_MS.
+ *
+ * Draped on the globe rather than drawn in screen space, so it tracks the
+ * camera for free instead of needing a redraw on every frame of a drag. */
+const DENSITY_MS = 2000;          // hard floor on redraws
+const DENSITY_TEX = 256;          // heat texture resolution
+const DENSITY_RADIUS = 15;        // px of influence per aircraft, in texture space
+let densityOn = false;
+let densityEntity = null;
+let densityLastDraw = 0;
+let densityPending = null;
+
+function clearDensity() {
+  if (densityEntity) {
+    viewer.entities.remove(densityEntity);
+    densityEntity = null;
+  }
+}
+
+/* Classic two-pass heatmap: accumulate alpha with additive radial gradients,
+ * then map the accumulated alpha through a colour ramp. */
+function densityCanvas(pts, west, south, east, north) {
+  const c = document.createElement("canvas");
+  c.width = c.height = DENSITY_TEX;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const lonSpan = east - west, latSpan = north - south;
+  if (lonSpan <= 0 || latSpan <= 0) return null;
+
+  for (const p of pts) {
+    const x = ((p.lon - west) / lonSpan) * DENSITY_TEX;
+    const y = ((north - p.lat) / latSpan) * DENSITY_TEX;   // canvas y grows downward
+    const g = ctx.createRadialGradient(x, y, 0, x, y, DENSITY_RADIUS);
+    g.addColorStop(0, "rgba(0,0,0,0.20)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.globalCompositeOperation = "lighter";             // density = overlap
+    ctx.beginPath();
+    ctx.arc(x, y, DENSITY_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over";
+
+  const img = ctx.getImageData(0, 0, DENSITY_TEX, DENSITY_TEX);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3] / 255;
+    if (a === 0) continue;
+    const t = Math.min(a * 1.6, 1);            // concentration, 0..1
+    d[i]     = t < 0.5 ? Math.round(60 + t * 300) : 255;                                // R
+    d[i + 1] = t < 0.5 ? Math.round(160 + t * 150) : Math.round(255 - (t - 0.5) * 300); // G
+    d[i + 2] = t < 0.5 ? Math.round(255 - t * 240) : Math.round(120 - (t - 0.5) * 200); // B
+    // Opacity rises steeply, not linearly: a linear ramp washes the whole
+    // rectangle in colour and buries the map, when the point is to show where
+    // the traffic PILES UP. Sparse airspace stays effectively clear, and even
+    // the hottest cell keeps the terrain legible underneath.
+    d[i + 3] = Math.round(Math.min(Math.pow(t, 1.7) * 1.25, 0.52) * 255);
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+function drawDensity(force) {
+  if (!densityOn || !featureOn("densityLayer") || perfModeOn()) return;
+  const now = Date.now();
+  if (!force && now - densityLastDraw < DENSITY_MS) {
+    // Coalesce into one trailing redraw instead of dropping the update.
+    if (!densityPending) {
+      densityPending = setTimeout(() => { densityPending = null; drawDensity(true); },
+        DENSITY_MS - (now - densityLastDraw));
+    }
+    return;
+  }
+  densityLastDraw = now;
+  safe("densityLayer", () => {
+    const pts = [];
+    for (const f of flights.values()) {
+      if (f.data && typeof f.data.lat === "number" && typeof f.data.lon === "number") {
+        pts.push({ lat: f.data.lat, lon: f.data.lon });
+      }
+    }
+    if (pts.length < 3) { clearDensity(); return; }   // nothing meaningful to shade
+    let west = 180, east = -180, south = 90, north = -90;
+    for (const p of pts) {
+      if (p.lon < west) west = p.lon;
+      if (p.lon > east) east = p.lon;
+      if (p.lat < south) south = p.lat;
+      if (p.lat > north) north = p.lat;
+    }
+    // A set straddling the antimeridian would invert into a band round the far
+    // side of the planet. Rare (the feed is a 250 nm circle) but wrong enough
+    // to be worth skipping outright.
+    if (east - west > 180) { clearDensity(); return; }
+    const padLon = Math.max((east - west) * 0.08, 0.25);
+    const padLat = Math.max((north - south) * 0.08, 0.25);
+    west = Math.max(west - padLon, -180); east = Math.min(east + padLon, 180);
+    south = Math.max(south - padLat, -90); north = Math.min(north + padLat, 90);
+
+    const canvas = densityCanvas(pts, west, south, east, north);
+    if (!canvas) return;
+    clearDensity();
+    densityEntity = viewer.entities.add({
+      rectangle: {
+        coordinates: Cesium.Rectangle.fromDegrees(west, south, east, north),
+        material: new Cesium.ImageMaterialProperty({ image: canvas, transparent: true })
+      }
+    });
+  });
+}
+
+function setDensity(on) {
+  densityOn = !!on && featureOn("densityLayer") && !perfModeOn();
+  const btn = document.getElementById("densToggle");
+  if (btn) btn.setAttribute("aria-pressed", String(densityOn));
+  if (densityOn) drawDensity(true);
+  else {
+    clearTimeout(densityPending); densityPending = null;
+    clearDensity();
+  }
+}
+
+onFeatureFail("densityLayer", () => {
+  densityOn = false;
+  clearTimeout(densityPending); densityPending = null;
+  clearDensity();
+  const btn = document.getElementById("densToggle");
+  if (btn) btn.style.display = "none";
+});
+onPerfModeChange(() => { if (perfModeOn() && densityOn) setDensity(false); });
+
+if (featureOn("densityLayer")) {
+  document.getElementById("densToggle").addEventListener("click", () => setDensity(!densityOn));
+} else {
+  document.getElementById("densToggle").style.display = "none";
+}
 
 /* ----- selection & detail panel ----- */
 const flightPanel = document.getElementById("flightPanel");
