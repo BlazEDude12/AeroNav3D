@@ -2783,7 +2783,7 @@ function runSearchAction(el) {
     const a = AIRPORTS.find(x => x[0] === el.dataset.iata);
     if (a) {
       viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(a[5], a[4], 120000), duration: 1.6 });
+        destination: Cesium.Cartesian3.fromDegrees(a[5], a[4], 18000), duration: 1.6 });
       showAirportWx(a); // live METAR card for the selected airport
     }
   } else if (act === "route") {
