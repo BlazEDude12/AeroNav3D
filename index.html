@@ -104,6 +104,11 @@
     border-radius:999px;padding:3px 10px;
   }
   .search-chip:hover{background:rgba(76,195,255,.22);}
+  .search-clear{
+    display:none;flex:none;border:none;background:none;cursor:pointer;
+    color:var(--muted);font-size:13px;line-height:1;padding:2px;
+  }
+  .search-clear:hover{color:var(--text);}
   .search-results{
     position:absolute;top:66px;left:50%;transform:translateX(-50%);z-index:12;
     width:min(460px,92vw);max-height:60vh;overflow-y:auto;display:none;
@@ -545,6 +550,7 @@
     <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
            placeholder="Search flight, airline, airport, SEA-LAX…">
     <button class="search-chip" id="searchChip" title="Clear airline filter"></button>
+    <button class="search-clear" id="searchClear" title="Clear search" aria-label="Clear search">✕</button>
   </div>
   <div class="map-toggle" id="mapToggle" role="tablist" aria-label="Map style">
     <div class="mt-thumb" id="mtThumb"></div>
@@ -2536,6 +2542,17 @@ for (const [icao, [iata]] of Object.entries(AIRLINES))
 const searchInput = document.getElementById("searchInput");
 const searchResults = document.getElementById("searchResults");
 const searchChip = document.getElementById("searchChip");
+const searchClear = document.getElementById("searchClear");
+
+function updateSearchClear() {
+  searchClear.style.display = searchInput.value ? "block" : "none";
+}
+searchClear.addEventListener("click", () => {
+  searchInput.value = "";
+  updateSearchClear();
+  searchResults.style.display = "none";
+  searchInput.focus();
+});
 
 let airlineFilter = null; // { prefixes:Set<ICAO>, name }
 function applyAirlineFilter() {
@@ -2852,6 +2869,7 @@ async function runSearch(q) {
 
 let searchDebounce = null;
 searchInput.addEventListener("input", () => {
+  updateSearchClear();
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => runSearch(searchInput.value), 150);
 });
@@ -2865,6 +2883,7 @@ searchInput.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape") {
     searchResults.style.display = "none";
     searchInput.value = "";
+    updateSearchClear();
     if (routeEntity) { viewer.entities.remove(routeEntity); routeEntity = null; }
   }
 });
