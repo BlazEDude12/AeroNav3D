@@ -903,11 +903,17 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  * ground, through green and cyan, to deep blue at cruise — so climbs and
  * descents read as a smooth gradient along the line. */
 const TRAIL_GAP_MS = 5 * 60 * 1000;  // data gaps longer than this break the line
+// Snapshots only exist for periods when someone was watching an area, so
+// history can hole out for minutes at a time. A hole under TRAIL_GAP_MS but
+// tens of km wide would otherwise render as one ruler-straight chord across
+// the screen — break the line on distance too. ~25 km ≈ 100 s at cruise.
+const TRAIL_JUMP_KM = 25;
 let trailPrimitives = [];            // static history segments
 let livePrimitive = null;            // rebuilt as the live segment grows
 let trailPositions = [];             // live segment; grows as new polls arrive
 let trailAlts = [];                  // matching altitudes (ft) per position
 let trailHex = null;
+let trailLastFix = null;             // {lat, lon} of the live segment's tail
 
 function altitudeColor(altFt) {
   const t = Math.min(Math.max(altFt || 0, 0), 38000) / 38000;
@@ -963,6 +969,7 @@ function clearTrail() {
   trailPositions = [];
   trailAlts = [];
   trailHex = null;
+  trailLastFix = null;
 }
 
 function rebuildLiveTrail() {
@@ -994,24 +1001,36 @@ async function showTrail(hex) {
   // Static segments for history, split at long gaps; the last segment
   // becomes the live one and keeps growing while the plane is selected.
   let seg = [], alts = [];
-  let prevTs = 0;
+  let prevTs = 0, prevLat = 0, prevLon = 0;
   for (const p of history) {
     const t = Date.parse(p.ts);
-    if (seg.length && t - prevTs > TRAIL_GAP_MS) {
+    if (seg.length && (t - prevTs > TRAIL_GAP_MS ||
+        gcKm(prevLat, prevLon, p.lat, p.lon) > TRAIL_JUMP_KM)) {
       if (seg.length > 1) trailPrimitives.push(makeTrailPrimitive(seg, alts));
       seg = []; alts = [];
     }
     seg.push(Cesium.Cartesian3.fromDegrees(p.lon, p.lat, (p.alt_ft || 0) * FT_TO_M));
     alts.push(p.alt_ft || 0);
     prevTs = t;
+    prevLat = p.lat; prevLon = p.lon;
   }
   trailPositions = seg;
   trailAlts = alts;
+  trailLastFix = seg.length ? { lat: prevLat, lon: prevLon } : null;
   rebuildLiveTrail();
 }
 
 function extendTrail(ac) {
   if (!trailHex || ac.hex !== trailHex) return;
+  // Same rule as showTrail: a jump too wide to be contiguous flight (stale
+  // history tail, or the tab was hidden for a while) starts a new segment
+  // instead of drawing a straight chord across the hole.
+  if (trailLastFix && gcKm(trailLastFix.lat, trailLastFix.lon, ac.lat, ac.lon) > TRAIL_JUMP_KM) {
+    if (trailPositions.length > 1)
+      trailPrimitives.push(makeTrailPrimitive(trailPositions, trailAlts));
+    trailPositions = []; trailAlts = [];
+  }
+  trailLastFix = { lat: ac.lat, lon: ac.lon };
   trailPositions.push(
     Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, flightAltitudeMeters(ac))
   );
