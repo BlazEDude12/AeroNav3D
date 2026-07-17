@@ -162,6 +162,14 @@
   .controls button:active{transform:scale(.94);}
   .controls .divider{height:1px;background:var(--border);margin:2px 4px;}
   .controls .compass{border-radius:50%;}
+  /* Curve the specular top highlight along the circular edge */
+  .controls .compass::before{
+    left:0;right:0;top:0;bottom:0;height:auto;
+    background:none;border-radius:50%;
+    border-top:1px solid rgba(255,255,255,.6);
+    -webkit-mask-image:linear-gradient(90deg,transparent,#fff 40%,#fff 60%,transparent);
+    mask-image:linear-gradient(90deg,transparent,#fff 40%,#fff 60%,transparent);
+  }
   .controls .compass svg{transition:transform .2s ease-out;}
 
   /* ---------- Hint / status ---------- */
