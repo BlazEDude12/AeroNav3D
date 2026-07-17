@@ -161,6 +161,8 @@
   .controls button:hover{background:rgba(40,55,85,.85);border-color:rgba(120,180,255,.4);}
   .controls button:active{transform:scale(.94);}
   .controls .divider{height:1px;background:var(--border);margin:2px 4px;}
+  .controls .compass{border-radius:50%;}
+  .controls .compass svg{transition:transform .2s ease-out;}
 
   /* ---------- Hint / status ---------- */
   .hint{
@@ -602,6 +604,13 @@
 
 <!-- Camera controls -->
 <div class="controls" aria-label="Globe controls">
+  <button id="compass" class="compass" title="Point north" aria-label="Point north">
+    <svg id="compassNeedle" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+      <polygon points="12,2 15,12 9,12" fill="#e53935"/>
+      <polygon points="12,22 9,12 15,12" fill="#f5f5f5" stroke="#9aa4b2" stroke-width=".6"/>
+      <text x="12" y="9.6" text-anchor="middle" font-size="5.5" font-weight="700" fill="#fff">N</text>
+    </svg>
+  </button>
   <button id="zoomIn"  title="Zoom in"  aria-label="Zoom in">+</button>
   <button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
   <div class="divider"></div>
@@ -3070,6 +3079,25 @@ function tilt(deltaDeg) {
   );
   cam.setView({ orientation: { heading: cam.heading, pitch, roll: 0 } });
 }
+
+// Compass: needle mirrors camera heading; click to face north again
+const compassNeedle = document.getElementById("compassNeedle");
+let lastHeading = null;
+viewer.scene.postRender.addEventListener(() => {
+  const heading = viewer.camera.heading;
+  if (heading === lastHeading) return;
+  lastHeading = heading;
+  compassNeedle.style.transform =
+    `rotate(${-Cesium.Math.toDegrees(heading)}deg)`;
+});
+document.getElementById("compass").addEventListener("click", () => {
+  const cam = viewer.camera;
+  cam.flyTo({
+    destination: cam.position.clone(),
+    orientation: { heading: 0, pitch: cam.pitch, roll: 0 },
+    duration: 0.8,
+  });
+});
 
 document.getElementById("zoomIn").addEventListener("click", () => zoom(0.4));
 document.getElementById("zoomOut").addEventListener("click", () => zoom(-0.6));
