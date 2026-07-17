@@ -869,6 +869,27 @@
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   .rp-wx{margin-top:10px;font-size:11px;color:var(--muted);display:none;align-items:center;gap:7px;flex-wrap:wrap;}
   .rp-wx b{color:#eaf3ff;font-weight:600;}
+
+  /* ---------- Feature #4: weather ambient ----------
+     The arrival row carries its own flight category as a tint, so IFR reads
+     before you've parsed a word of it. Colour comes from the METAR's category,
+     via a CSS var set on the row. */
+  .rp-wx.wx-tinted{
+    padding:7px 9px;border-radius:9px;margin-left:-9px;margin-right:-9px;
+    border-left:2px solid var(--wx-cat, transparent);
+    background:linear-gradient(90deg,
+      rgba(var(--wx-cat-rgb,255,255,255), .15), transparent 72%);
+  }
+  /* Wind rose: direction the wind blows FROM, plus its speed in the middle. */
+  .wx-rose{width:34px;height:34px;flex:none;display:block;}
+  .wx-rose .wr-ring{fill:rgba(255,255,255,.04);stroke:rgba(255,255,255,.20);stroke-width:1;}
+  .wx-rose .wr-tick{stroke:rgba(255,255,255,.30);stroke-width:1;}
+  .wx-rose .wr-arrow{fill:var(--accent);}
+  .wx-rose .wr-spd{
+    fill:#eaf3ff;font-size:9.5px;font-weight:700;text-anchor:middle;
+    font-variant-numeric:tabular-nums;
+  }
+  .wx-rose .wr-calm{fill:var(--muted);font-size:7px;text-anchor:middle;letter-spacing:.1em;}
   @media (max-width:640px){ .wx-card{top:auto;bottom:76px;right:12px;left:12px;width:auto;} }
 </style>
 </head>
@@ -1694,7 +1715,106 @@ function clearRouteDisplay() {
   fpRoute.innerHTML = "";
   routeHex = null;
   routeEnds = null;
+  clearWxFog();
 }
+
+/* ----- Feature #4: weather-reactive ambient layer -----
+ * Everything here comes from the arrival METAR the panel already fetches and
+ * parses. No new provider, no new request — metarWx now simply hands back the
+ * numbers it was already deriving and throwing away.
+ * Each element hides itself independently: a METAR that reports no wind still
+ * gets its category tint, and one with no visibility group still gets a rose. */
+let wxFogEntity = null;
+
+function clearWxFog() {
+  if (wxFogEntity) { viewer.entities.remove(wxFogEntity); wxFogEntity = null; }
+}
+
+// One soft radial bloom, built once and reused — a flat disc would read as a
+// painted circle rather than weather.
+const FOG_CANVAS = (() => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,0.95)");
+  g.addColorStop(0.55, "rgba(232,240,252,0.45)");
+  g.addColorStop(1, "rgba(232,240,252,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  return c;
+})();
+
+const WX_LOW_VIS_MI = 3;   // IFR threshold — below this, the field is genuinely murky
+
+function showWxFog(dest, wx) {
+  clearWxFog();
+  if (!featureOn("weatherAmbient") || perfModeOn()) return;
+  if (!wx || wx.visMi == null || wx.visMi >= WX_LOW_VIS_MI) return;  // clear enough: no bloom
+  if (!dest || typeof dest.lat !== "number" || typeof dest.lon !== "number") return;
+  safe("weatherAmbient", () => {
+    const t = Math.min(Math.max((WX_LOW_VIS_MI - wx.visMi) / WX_LOW_VIS_MI, 0), 1);
+    const radius = 14000 + t * 30000;          // murkier = wider
+    wxFogEntity = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat),
+      ellipse: {
+        semiMajorAxis: radius, semiMinorAxis: radius, height: 0,
+        material: new Cesium.ImageMaterialProperty({
+          image: FOG_CANVAS, transparent: true,
+          color: Cesium.Color.WHITE.withAlpha(0.12 + t * 0.26)
+        })
+      }
+    });
+  });
+}
+
+/* Meteorological convention: wind direction is where it blows FROM, so the
+ * arrow sits at that bearing and points inward. */
+function windRoseSvg(wx) {
+  const spd = wx.wspd;
+  if (spd == null) return "";                       // no wind group at all
+  const dirKnown = typeof wx.wdir === "number";
+  const label = dirKnown ? `Wind from ${String(wx.wdir).padStart(3, "0")}° at ${spd} knots`
+    : (wx.wdir === "VRB" ? `Wind variable at ${spd} knots` : `Wind ${spd} knots`);
+  const ticks = [0, 90, 180, 270].map((a) =>
+    `<line class="wr-tick" x1="20" y1="4.5" x2="20" y2="7.5" transform="rotate(${a} 20 20)"/>`).join("");
+  // Calm or variable: no meaningful bearing to point at.
+  const arrow = (dirKnown && spd > 0)
+    ? `<g transform="rotate(${wx.wdir} 20 20)"><path class="wr-arrow" d="M20 5.5 L23.2 12.5 L20 10.8 L16.8 12.5 Z"/></g>`
+    : "";
+  const centre = spd > 0
+    ? `<text class="wr-spd" x="20" y="23.5">${spd}</text>`
+    : `<text class="wr-calm" x="20" y="23">CALM</text>`;
+  return `<svg class="wx-rose" viewBox="0 0 40 40" role="img" aria-label="${label}">
+    <circle class="wr-ring" cx="20" cy="20" r="15.5"/>${ticks}${arrow}${centre}</svg>`;
+}
+
+// METAR_CAT_COLORS are hex; the tint gradient needs the channels separately.
+function hexToRgbTriplet(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+  return m ? `${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)}` : "255,255,255";
+}
+
+/* Dress the arrival row with its category tint and a wind rose. */
+function decorateArrivalWx(el, wx) {
+  if (!featureOn("weatherAmbient")) return;
+  safe("weatherAmbient", () => {
+    if (wx.cat && wx.color) {
+      el.style.setProperty("--wx-cat", wx.color);
+      el.style.setProperty("--wx-cat-rgb", hexToRgbTriplet(wx.color));
+      el.classList.add("wx-tinted");
+    }
+    const rose = windRoseSvg(wx);
+    if (rose) el.insertAdjacentHTML("beforeend", rose);
+  });
+}
+
+onFeatureFail("weatherAmbient", () => {
+  clearWxFog();
+  document.querySelectorAll(".rp-wx.wx-tinted").forEach((el) => el.classList.remove("wx-tinted"));
+  document.querySelectorAll(".wx-rose").forEach((el) => el.remove());
+});
+onPerfModeChange(() => { if (perfModeOn()) clearWxFog(); });
 
 /* Live progress along the route: distance covered/remaining from the
  * great-circle legs, arrival estimated from ground speed. Refreshed each
@@ -1839,7 +1959,16 @@ function metarWx(raw) {
     cond: metarSkyText(o),
     cat,
     color: METAR_CAT_COLORS[cat],
-    raw
+    raw,
+    // Numeric fields for the ambient layer (#4). The display strings above are
+    // untouched, so every existing consumer keeps reading exactly what it did.
+    // Any of these can be null — the METAR simply didn't report it.
+    tempC: o.tempC,
+    wdir: o.wdir,      // degrees, or "VRB", or null
+    wspd: o.wspd,      // knots, or null
+    wgst: o.wgst,      // knots, or null
+    visMi: o.visMi,    // statute miles, or null
+    ceilFt: ceil === Infinity ? null : ceil
   };
 }
 
@@ -2029,6 +2158,9 @@ async function showRoute(hex) {
     el.innerHTML = `<span>ARRIVAL WX</span><b>${wx.temp} · ${wx.cond} · ${wx.wind}</b>` +
       `<span class="wx-cat" style="color:${wx.color}">${wx.cat}</span>`;
     el.style.display = "flex";
+    // Feature #4 — same METAR, read for what it also implies about the field.
+    decorateArrivalWx(el, wx);
+    showWxFog(dest, wx);
   });
   if (canProgress) {
     routeEnds = { dep, dest };
