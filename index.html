@@ -2243,6 +2243,10 @@ function inTerminalPhase(ac, ap, ceilFt, maxKm) {
     elev = groundElevFt(ac.lat, ac.lon);
   return ac.alt_baro < (elev ?? 0) + ceilFt;
 }
+// Any major hub within maxKm of the point? (AIRPORTS: [iata, icao, name, city, lat, lon])
+function nearAnyAirport(lat, lon, maxKm) {
+  return AIRPORTS.some((a) => gcKm(lat, lon, a[4], a[5]) <= maxKm);
+}
 function flightMode(ac) {
   const route = routeHex === ac.hex ? routeEnds : null;
   const rec = flights.get(ac.hex);
@@ -2283,14 +2287,16 @@ function flightMode(ac) {
     return ["Landing", "#ff8a65"];
   // Level segment on approach: aircraft step down in stages, holding
   // altitude between descents (e.g. level at 3,000 ft intercepting the
-  // glideslope). Low over the destination — or level right after a
-  // sustained descent while still well below cruise — is still the
-  // descent phase, not cruising.
-  if (!inTerminalPhase(ac, route && route.dest, 250, 70) && // not on the ground
-      inTerminalPhase(ac, route && route.dest, 8000, 70) &&
-      (sinkAgo < 300000 ||
-        (route && route.dest && typeof route.dest.lat === "number" &&
-          gcKm(ac.lat, ac.lon, route.dest.lat, route.dest.lon) <= 70)))
+  // glideslope). Level and low near the arrival airport is still the
+  // descent phase, not cruising. Works for every aircraft: use the
+  // route's destination when known, else any major hub nearby.
+  const dest = route && route.dest;
+  const nearArrival = dest && typeof dest.lat === "number"
+    ? gcKm(ac.lat, ac.lon, dest.lat, dest.lon) <= 70
+    : nearAnyAirport(ac.lat, ac.lon, 70);
+  if (nearArrival && vr <= 150 && // not slow-climbing out of the hub
+      !inTerminalPhase(ac, dest, 250, 70) && // not on the ground
+      inTerminalPhase(ac, dest, 8000, 70))
     return ["Descending", "#ffb84d"];
   // Some transponders never send the on-ground flag and report a numeric
   // altitude while taxiing: level at ground height is On Ground — or the
