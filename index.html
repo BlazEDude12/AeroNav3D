@@ -327,6 +327,15 @@
     0%,100%{opacity:1;box-shadow:0 0 9px currentColor;}
     50%{opacity:.55;box-shadow:0 0 3px currentColor;}
   }
+  /* Transponder code: the 4 digits big, the plain-English meaning beside it.
+     Emergency codes borrow the status dot's pulse to pull the eye. */
+  #fpSquawk{display:flex;align-items:baseline;gap:9px;}
+  #fpSquawk small{font-size:11px;font-weight:500;letter-spacing:.03em;
+    color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;}
+  #fpSquawk.alert{color:#ff5a5a;}
+  #fpSquawk.alert small{color:#ff9a9a;}
+  #fpSquawk.alert .mode-dot{align-self:center;}
   .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;padding:14px 16px;}
   .panel-grid span{display:block;font-size:10px;letter-spacing:.18em;color:var(--muted);}
   .panel-grid b{font-size:17px;font-weight:600;}
@@ -606,6 +615,7 @@
     <div><span>STATUS</span><b id="fpMode">—</b></div>
     <div><span>MSN</span><b id="fpMsn">—</b></div>
     <div><span>AGE</span><b id="fpAge">—</b></div>
+    <div style="grid-column:1/-1"><span>SQUAWK</span><b id="fpSquawk">—</b></div>
     <div style="grid-column:1/-1"><span>COUNTRY OF REGISTRATION</span><b id="fpCountry">—</b></div>
   </div>
 </div>
@@ -2368,6 +2378,47 @@ function flightMode(ac) {
   return ["Cruising", "#4cc3ff"];
 }
 
+/* The squawk is the four-octal-digit code ATC assigns to a transponder. Most
+ * are discrete codes meaningful only to the controlling sector, but a handful
+ * are reserved by convention and worth spelling out. The VFR codes are
+ * regional — hence the country/region tag in the label. */
+const SQUAWK_CODES = {
+  "7500": ["Hijack", true],
+  "7600": ["Radio failure", true],
+  "7700": ["General emergency", true],
+  "7777": ["Military interceptor"],
+  "0000": ["Non-discrete / military"],
+  "1000": ["IFR, Mode S (Europe)"],
+  "1200": ["VFR (US)"],
+  "1202": ["VFR glider (US)"],
+  "1255": ["Firefighting (US)"],
+  "1277": ["Search and rescue (US)"],
+  "2000": ["IFR, entering from non-radar"],
+  "7000": ["VFR (Europe)"]
+};
+// The feed's own decoded emergency flag. More specific than the bare code
+// (it distinguishes lifeguard and minimum-fuel, which have no reserved
+// squawk), so it wins where both are present.
+const EMERGENCY_LABELS = {
+  general: "General emergency",
+  lifeguard: "Lifeguard / medical",
+  minfuel: "Minimum fuel",
+  nordo: "Radio failure",
+  unlawful: "Unlawful interference",
+  downed: "Downed aircraft"
+};
+function squawkInfo(ac) {
+  const code = typeof ac.squawk === "string" ? ac.squawk.trim() : "";
+  if (!/^[0-7]{4}$/.test(code)) return null; // absent, or a garbled decode
+  const emergency = EMERGENCY_LABELS[ac.emergency];
+  const reserved = SQUAWK_CODES[code];
+  return {
+    code,
+    label: emergency || (reserved && reserved[0]) || "",
+    alert: !!(emergency || (reserved && reserved[1]))
+  };
+}
+
 function updateFlightPanel(ac) {
   const callsign = (ac.flight || "").trim() || ac.hex.toUpperCase();
   updateAirlineLogo(callsign);
@@ -2387,6 +2438,13 @@ function updateFlightPanel(ac) {
   const fpMode = document.getElementById("fpMode");
   fpMode.innerHTML = modeColor ? `<i class="mode-dot"></i>${modeLabel}` : modeLabel;
   fpMode.style.color = modeColor;
+  // Both halves are validated digits / our own constants, so no escaping.
+  const sq = squawkInfo(ac);
+  const fpSquawk = document.getElementById("fpSquawk");
+  fpSquawk.classList.toggle("alert", !!(sq && sq.alert));
+  fpSquawk.innerHTML = !sq ? "—"
+    : (sq.alert ? '<i class="mode-dot"></i>' : "") + sq.code +
+      (sq.label ? `<small>${sq.label}</small>` : "");
 }
 function setSelectedColor(hex, selected) {
   const f = flights.get(hex);
