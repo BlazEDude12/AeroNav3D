@@ -489,6 +489,37 @@
     filter:url(#liquid);
     mix-blend-mode:screen;
   }
+  /* ---------- Feature #8: expanded detail sheet ----------
+     The sheet is the SAME panel, widened — not a second copy. Duplicating the
+     readouts would mean two things to keep in sync with the live feed, and one
+     of them would drift. Expanding in place keeps every id live. */
+  .panel.sheet .panel-photo{overflow:hidden;}
+  .panel.sheet .panel-photo img{height:300px;}
+  .panel:not(.sheet) .sheet-only{display:none;}
+  @media (min-width:601px){
+    .panel.sheet{width:min(760px,calc(100vw - 32px));}
+    .panel.sheet .panel-photo img{height:340px;}
+    .panel.sheet .panel-grid{grid-template-columns:repeat(3,1fr);}
+  }
+  /* Cursor-tilt refraction. Composed from vars so the open/close animation and
+     the tilt share one transform instead of fighting over it. Transform only —
+     never filter — so this stays on the compositor. */
+  .panel.open.sheet{
+    transform:perspective(1200px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg));
+    transition:transform .16s ease-out,opacity .35s ease,visibility 0s;
+  }
+  .panel.sheet .panel-photo img{
+    transform:scale(1.06) translate3d(var(--par-x,0px),var(--par-y,0px),0);
+    transition:transform .18s ease-out;
+  }
+  /* Tilt and parallax are pure decoration: first thing to go. */
+  @media (prefers-reduced-motion: reduce){
+    .panel.open.sheet{transform:none;}
+    .panel.sheet .panel-photo img{transform:none;}
+  }
+  body.perf .panel.open.sheet{transform:none;}
+  body.perf .panel.sheet .panel-photo img{transform:none;}
+
   .panel-callsign{letter-spacing:.02em;}
   .panel-grid{row-gap:14px;}
   .panel-grid span{font-size:9.5px;letter-spacing:.2em;margin-bottom:3px;opacity:.9;}
@@ -684,6 +715,7 @@
       </div>
     </div>
     <div class="actions">
+      <button id="fpExpand" aria-label="Expand aircraft details" aria-expanded="false" title="Expand details">⤢</button>
       <button id="fpStar" aria-label="Save to My Flights" title="Save to My Flights">☆</button>
       <button id="fpClose" aria-label="Close flight details">✕</button>
     </div>
@@ -703,6 +735,9 @@
     <div><span>STATUS</span><b id="fpMode">—</b></div>
     <div><span>MSN</span><b id="fpMsn">—</b></div>
     <div><span>AGE</span><b id="fpAge">—</b></div>
+    <div class="sheet-only"><span>REGISTRATION</span><b id="fpReg">—</b></div>
+    <div class="sheet-only"><span>TYPE</span><b id="fpType">—</b></div>
+    <div class="sheet-only"><span>OPERATOR</span><b id="fpOperator">—</b></div>
     <div style="grid-column:1/-1"><span>SQUAWK</span><b id="fpSquawk">—</b></div>
     <div style="grid-column:1/-1"><span>COUNTRY OF REGISTRATION</span><b id="fpCountry">—</b></div>
   </div>
@@ -2601,6 +2636,7 @@ function updateFlightPanel(ac) {
   updateAircraftPhoto(ac);
   updateAircraftMeta(ac.hex);
   updateRouteProgress(ac);
+  safe("detailSheet", () => updateSheetFields(ac));
   const airline = airlineFor(callsign);
   const rec = flights.get(ac.hex);
   const dtSec = rec ? (Date.now() - rec.fetchedAt) / 1000 : 0;
@@ -2622,6 +2658,87 @@ function updateFlightPanel(ac) {
     : (sq.alert ? '<i class="mode-dot"></i>' : "") + sq.code +
       (sq.label ? `<small>${sq.label}</small>` : "");
 }
+/* ----- Feature #8: expanded detail sheet -----
+ * Same panel, widened — every readout keeps its id and its live updates. The
+ * only new values are the ones the compact card had no room for; each hides
+ * itself when the feed omits it. */
+function updateSheetFields(ac) {
+  const callsign = (ac.flight || "").trim();
+  const airline = airlineFor(callsign);
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val || "—";
+  };
+  set("fpReg", (ac.r || "").trim());
+  set("fpType", [ac.t, ac.desc].filter(Boolean).join(" · "));
+  // ownOp is the operator on the airframe's record; the callsign's airline is
+  // the better answer when both exist (wet leases make them disagree).
+  set("fpOperator", (airline && airline[1]) || (ac.ownOp || "").trim());
+}
+
+function tiltReset(panel) {
+  panel.style.removeProperty("--tilt-x");
+  panel.style.removeProperty("--tilt-y");
+  panel.style.removeProperty("--par-x");
+  panel.style.removeProperty("--par-y");
+}
+
+function initDetailSheet() {
+  const panel = flightPanel;
+  const btn = document.getElementById("fpExpand");
+  if (!btn) return;
+
+  onFeatureFail("detailSheet", () => {
+    btn.style.display = "none";
+    panel.classList.remove("sheet");
+    tiltReset(panel);
+  });
+
+  if (!featureOn("detailSheet")) { btn.style.display = "none"; return; }
+
+  btn.addEventListener("click", () => safe("detailSheet", () => {
+    const on = !panel.classList.contains("sheet");
+    panel.classList.toggle("sheet", on);
+    btn.setAttribute("aria-expanded", String(on));
+    btn.title = on ? "Collapse details" : "Expand details";
+    btn.setAttribute("aria-label", on ? "Collapse aircraft details" : "Expand aircraft details");
+    if (!on) tiltReset(panel);
+  }));
+
+  // Cursor tilt + photo parallax. rAF-coalesced so a fast pointer can't queue
+  // more style writes than there are frames.
+  const MAX_TILT = 4;   // degrees — refraction, not a novelty
+  const MAX_PAR = 9;    // px; stays inside the photo's 6% overscale
+  let raf = 0, pt = null;
+
+  const apply = () => {
+    raf = 0;
+    if (!pt || !panel.classList.contains("sheet")) return;
+    const r = panel.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const nx = (pt.x - r.left) / r.width - 0.5;   // -0.5 .. +0.5
+    const ny = (pt.y - r.top) / r.height - 0.5;
+    panel.style.setProperty("--tilt-y", (nx * MAX_TILT).toFixed(2) + "deg");
+    panel.style.setProperty("--tilt-x", (-ny * MAX_TILT).toFixed(2) + "deg");
+    panel.style.setProperty("--par-x", (-nx * MAX_PAR).toFixed(1) + "px");
+    panel.style.setProperty("--par-y", (-ny * MAX_PAR).toFixed(1) + "px");
+  };
+
+  panel.addEventListener("pointermove", (e) => safe("detailSheet", () => {
+    if (!panel.classList.contains("sheet")) return;
+    if (prefersReducedMotion() || perfModeOn()) return;
+    pt = { x: e.clientX, y: e.clientY };
+    if (!raf) raf = requestAnimationFrame(apply);
+  }));
+  panel.addEventListener("pointerleave", () => safe("detailSheet", () => tiltReset(panel)));
+
+  // Perf mode / reduced motion can flip mid-session; drop any held tilt.
+  onPerfModeChange(() => {
+    if (perfModeOn() || prefersReducedMotion()) tiltReset(panel);
+  });
+}
+initDetailSheet();
+
 function setSelectedColor(hex, selected) {
   const f = flights.get(hex);
   if (f) f.billboard.color = selected ? PLANE_SELECTED : ICONS[f.klass].color;
