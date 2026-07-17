@@ -23,6 +23,21 @@
     --text:#dfe7f1;
     --muted:#7c8aa0;
     --accent:#4cc3ff;
+
+    /* ---------- Liquid-glass design system ----------
+       One material, driven entirely by these vars so the settings panel can
+       retune every surface at once (see FEATURES.adaptiveGlass).
+       The HUD floats over satellite imagery that ranges from black ocean to
+       bright desert, so the material is a white specular wash layered over a
+       dark scrim — the scrim is what keeps light text legible over daylight
+       terrain, and dropping it is what makes "glass" turn into "unreadable". */
+    --glass-tint: 255,255,255;   /* specular/highlight colour */
+    --glass-blur: 20px;
+    --glass-sat: 145%;
+    --glass-alpha: .10;          /* strength of the specular wash */
+    --glass-scrim: 13,18,30;     /* dark backing (matches --panel) */
+    --glass-scrim-alpha: .78;    /* lower = more see-through, less legible */
+    --glass-radius: 14px;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;overflow:hidden;background:var(--bg);
@@ -41,9 +56,7 @@
   .brand{
     position:absolute;top:20px;left:20px;z-index:10;
     display:flex;align-items:center;gap:12px;
-    padding:10px 16px 10px 12px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--border);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    padding:10px 16px 10px 12px;
     user-select:none;
   }
   .brand svg{display:block;}
@@ -59,8 +72,6 @@
   .search{
     width:min(400px,32vw);display:flex;align-items:center;gap:9px;
     padding:0 14px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--border);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     transition:border-color .2s,box-shadow .2s;
   }
   .search:focus-within{
@@ -79,8 +90,6 @@
   .map-toggle{
     position:relative;display:flex;align-items:stretch;width:176px;flex:none;
     padding:4px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--border);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     user-select:none;
   }
   .mt-thumb{
@@ -114,10 +123,7 @@
   .search-results{
     position:absolute;top:66px;left:50%;transform:translateX(-50%);z-index:12;
     width:min(460px,92vw);max-height:60vh;overflow-y:auto;display:none;
-    border-radius:12px;background:var(--panel);border:1px solid var(--border);
-    backdrop-filter:blur(18px) saturate(140%);
-    -webkit-backdrop-filter:blur(18px) saturate(140%);
-    box-shadow:0 1px 0 rgba(255,255,255,.13) inset,0 24px 50px -16px rgba(0,0,0,.7);
+    border-radius:12px;
     scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent;
   }
   .sr-group{font-size:9px;letter-spacing:.2em;color:var(--muted);padding:9px 14px 3px;}
@@ -140,10 +146,9 @@
   .plane-tip{
     position:absolute;z-index:15;display:none;align-items:center;gap:7px;
     padding:5px 10px;border-radius:9px;white-space:nowrap;pointer-events:none;
-    background:rgba(13,18,30,.92);border:1px solid rgba(255,255,255,.14);
+    --glass-scrim-alpha:.92;--glass-radius:9px;
     font-size:12.5px;font-weight:700;letter-spacing:.05em;
     transform:translate(-50%,-135%);
-    box-shadow:0 6px 18px rgba(0,0,0,.5);
   }
   .plane-tip img{width:18px;height:18px;border-radius:4px;background:#fff;
     object-fit:contain;padding:1px;display:none;}
@@ -154,9 +159,8 @@
     display:flex;flex-direction:column;gap:8px;
   }
   .controls button{
-    width:42px;height:42px;border-radius:10px;cursor:pointer;
-    background:var(--panel);border:1px solid var(--border);color:var(--text);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    width:42px;height:42px;cursor:pointer;color:var(--text);
+    --glass-radius:10px;
     font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;
     transition:background .15s,border-color .15s,transform .1s;
   }
@@ -177,36 +181,39 @@
   /* ---------- Hint / status ---------- */
   .hint{
     position:absolute;left:50%;bottom:28px;transform:translateX(-50%);z-index:10;
-    padding:8px 16px;border-radius:999px;white-space:nowrap;
-    background:var(--panel);border:1px solid var(--border);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    padding:8px 16px;white-space:nowrap;--glass-radius:999px;
     font-size:11px;color:var(--muted);letter-spacing:.06em;
     transition:opacity .8s;pointer-events:none;
   }
   .notice{
     position:absolute;top:72px;right:20px;z-index:10;max-width:320px;
-    padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.5;
-    background:rgba(60,35,10,.85);border:1px solid rgba(255,170,60,.35);color:#ffd9a0;
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:none;
+    padding:12px 14px;font-size:12px;line-height:1.5;
+    --glass-scrim:60,35,10;--glass-scrim-alpha:.85;--glass-radius:10px;
+    color:#ffd9a0;display:none;
   }
   /* ---------- Flight detail panel ---------- */
   .panel{
     position:absolute;top:96px;left:16px;z-index:10;width:392px;
-    background:var(--panel);border:1px solid var(--border);border-radius:14px;
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    overflow:hidden auto;
+    overflow:hidden;
     max-height:calc(100vh - 116px);
-    overscroll-behavior:contain;
-    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;
+    display:flex;flex-direction:column;
     opacity:0;visibility:hidden;pointer-events:none;
     transform:translateY(-12px) scale(.95);
     transition:opacity .35s ease,
       transform .35s cubic-bezier(.16,1,.3,1),
       visibility 0s linear .35s;
   }
-  .panel::-webkit-scrollbar{width:6px;}
-  .panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:3px;}
-  .panel::-webkit-scrollbar-track{background:transparent;}
+  /* The glass frame must not be the scroll container: an absolutely-positioned
+     rim (.glass--liquid::after) inside a scrolling box scrolls away with the
+     content. Frame stays put, .panel-scroll moves. */
+  .panel-scroll{
+    overflow:hidden auto;overscroll-behavior:contain;
+    border-radius:inherit;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;
+  }
+  .panel-scroll::-webkit-scrollbar{width:6px;}
+  .panel-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:3px;}
+  .panel-scroll::-webkit-scrollbar-track{background:transparent;}
   .panel.open{
     opacity:1;visibility:visible;pointer-events:auto;
     transform:translateY(0) scale(1);
@@ -347,17 +354,15 @@
   #fpStar.active{color:#ffd76a;}
   .mf-toggle{
     position:absolute;top:20px;right:20px;z-index:10;cursor:pointer;
-    display:flex;align-items:center;gap:7px;padding:10px 14px;border-radius:12px;
-    background:var(--panel);border:1px solid var(--border);color:var(--text);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    display:flex;align-items:center;gap:7px;padding:10px 14px;--glass-radius:12px;
+    color:var(--text);
     font-size:12px;letter-spacing:.06em;
   }
   .mf-toggle:hover{background:rgba(40,55,85,.85);border-color:rgba(120,180,255,.4);}
   .mf-toggle .star{color:#ffd76a;font-size:14px;}
   .mf-panel{
     position:absolute;top:72px;right:20px;z-index:11;width:248px;
-    background:var(--panel);border:1px solid var(--border);border-radius:12px;
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    --glass-radius:12px;
     display:none;overflow:hidden;
   }
   .mf-head{display:flex;justify-content:space-between;align-items:center;
@@ -385,8 +390,7 @@
     backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
   }
   .auth-card{
-    position:relative;width:300px;padding:22px;border-radius:14px;
-    background:var(--panel);border:1px solid var(--border);
+    position:relative;width:300px;padding:22px;
   }
   .auth-card h2{font-size:16px;letter-spacing:.04em;margin-bottom:4px;}
   .auth-card .sub{font-size:11px;color:var(--muted);margin-bottom:16px;}
@@ -425,30 +429,65 @@
      Same dark aesthetic, finer details: neutral hairline borders, soft
      layered shadows, steady tabular numerals, and gentle micro-motion. */
   html,body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
-  .brand,.controls button,.hint,.panel,.mf-toggle,.mf-panel,.auth-card,.search,.map-toggle{
-    border-color:rgba(255,255,255,.11);
-    /* Stronger lit-from-above convex surface */
-    background-image:linear-gradient(180deg,
-      rgba(255,255,255,.10),rgba(255,255,255,.02) 34%,
-      rgba(0,0,0,.07) 80%,rgba(0,0,0,.20));
+
+  /* ---------- .glass — the one material ----------
+     Every floating surface wears this so the HUD reads as a single sheet of
+     glass. Two stacked backgrounds: a lit-from-above specular wash over the
+     dark scrim. `background` (not background-image) sets both at once, so a
+     surface only needs .glass — no per-element colour left to drift. */
+  .glass{
+    background:
+      linear-gradient(180deg,
+        rgba(var(--glass-tint), var(--glass-alpha)),
+        rgba(var(--glass-tint), calc(var(--glass-alpha) * .2)) 34%,
+        rgba(0,0,0,.07) 80%, rgba(0,0,0,.20)),
+      rgba(var(--glass-scrim), var(--glass-scrim-alpha));
+    border:1px solid rgba(var(--glass-tint),.11);
+    border-radius:var(--glass-radius);
     /* Double bevel + tight contact + deep ambient for a solid raised slab */
-    box-shadow:0 1px 0 rgba(255,255,255,.20) inset,
+    box-shadow:0 1px 0 rgba(var(--glass-tint),.20) inset,
                0 -1.5px 1px rgba(0,0,0,.36) inset,
                0 1px 1px rgba(0,0,0,.30),
                0 4px 6px -1px rgba(0,0,0,.42),
                0 14px 26px -8px rgba(0,0,0,.58),
                0 34px 64px -20px rgba(0,0,0,.78);
-    backdrop-filter:blur(20px) saturate(145%);
-    -webkit-backdrop-filter:blur(20px) saturate(145%);
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
   }
   /* Crisp specular highlight riding the top edge (neutral white).
      The other targets are already position:absolute; only the in-flow
      controls buttons need a positioning context for the pseudo-element. */
   .controls button{position:relative;}
-  .brand::before,.panel::before,.mf-panel::before,.mf-toggle::before,.controls button::before{
+  .glass::before{
     content:"";position:absolute;left:10%;right:10%;top:0;height:1px;
-    background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);
+    background:linear-gradient(90deg,transparent,rgba(var(--glass-tint),.6),transparent);
     pointer-events:none;
+  }
+  /* Surfaces that shouldn't carry the top-edge glint: the pill-shaped hint,
+     the inline search/toggle bar (their glint reads as a seam against the
+     input), and the compass (which draws its own curved one below). */
+  .hint::before,.search::before,.map-toggle::before,.search-results::before{content:none;}
+
+  /* ---------- .glass--liquid — refracted rim ----------
+     Frosted glass is backdrop-filter alone; liquid glass adds a warped,
+     light-bending edge. The displacement map is applied to a rim-only
+     pseudo-element rather than the surface itself: filtering the surface
+     would displace its TEXT too (visibly garbled at any useful scale) and
+     force the whole panel through an SVG filter every repaint. The rim
+     carries no text, so it can warp freely and stay cheap. */
+  /* :where() keeps this at zero specificity so it can never beat a host's own
+     `position` (a plain `.glass--liquid{position:relative}` silently overrode
+     .panel's `position:absolute`, dropping it into normal flow). Hosts that
+     already position themselves win; unpositioned ones still get a context
+     for ::before/::after. */
+  :where(.glass,.glass--liquid){position:relative;}
+  .glass--liquid::after{
+    content:"";position:absolute;inset:0;border-radius:inherit;
+    pointer-events:none;z-index:2;
+    box-shadow:inset 0 0 0 1.5px rgba(var(--glass-tint),.42),
+               inset 0 0 12px rgba(var(--glass-tint),.10);
+    filter:url(#liquid);
+    mix-blend-mode:screen;
   }
   .panel-callsign{letter-spacing:.02em;}
   .panel-grid{row-gap:14px;}
@@ -479,6 +518,26 @@
   .mf-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px;}
   :is(button,a):focus-visible{outline:2px solid rgba(120,180,255,.6);outline-offset:2px;}
 
+  /* Accent rims: these must out-rank .glass's `border` shorthand, which is
+     declared later at equal specificity. */
+  .notice.glass{border-color:rgba(255,170,60,.35);}
+  .wx-card.glass{border-color:rgba(76,195,255,.28);}
+
+  /* ---------- Glass: degradation paths ----------
+     1. Reduced motion — drop the warp; it's decorative refraction.
+     2. Perf mode (body.perf) — same, plus a cheaper blur; set by Feature #10.
+     3. No backdrop-filter support — the wash over a near-opaque scrim, so
+        text keeps its contrast with no blur to lean on. */
+  @media (prefers-reduced-motion: reduce){
+    .glass--liquid::after{filter:none;}
+  }
+  body.perf .glass--liquid::after{filter:none;}
+  body.perf{--glass-blur:6px;--glass-sat:110%;}
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+    :root{--glass-scrim-alpha:.94;}
+    .glass--liquid::after{filter:none;}
+  }
+
   /* Below 900px the centred bar would collide with the brand badge and
      My Flights — drop it to its own row instead. */
   @media (max-width:900px){
@@ -498,13 +557,20 @@
     .notice{top:auto;bottom:76px;right:12px;left:12px;max-width:none;}
     .mf-toggle{top:12px;right:12px;padding:8px 12px;}
     .mf-panel{top:64px;right:12px;left:auto;width:248px;}
+    /* The panel's fixed 392px overflows a 375px viewport, clipping the close
+       button off-screen. Fit it to the width and stop short of the control
+       stack so both stay usable. */
+    .panel{
+      top:112px;left:12px;right:62px;width:auto;
+      max-height:calc(100vh - 132px);
+    }
   }
   /* Live airport weather (METAR) */
   .wx-card{
     position:absolute;top:72px;right:20px;z-index:10;width:300px;
-    padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.55;
-    background:rgba(10,16,30,.88);border:1px solid rgba(76,195,255,.28);color:#dfe9f5;
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:none;
+    padding:12px 14px;font-size:12px;line-height:1.55;
+    --glass-scrim:10,16,30;--glass-scrim-alpha:.88;--glass-radius:10px;
+    color:#dfe9f5;display:none;
   }
   .wx-card .wx-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
   .wx-card .wx-head b{font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -519,10 +585,22 @@
 </head>
 <body>
 
+<!-- Displacement map for .glass--liquid rims. baseFrequency stays low:
+     higher values read as grain/noise rather than bent light. -->
+<svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0">
+  <filter id="liquid" x="-25%" y="-25%" width="150%" height="150%"
+          color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008"
+                  numOctaves="2" seed="7" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="12"
+                       xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
 <div id="globe"></div>
 
 <!-- Branding -->
-<div class="brand" aria-label="AeroNav3D">
+<div class="brand glass" aria-label="AeroNav3D">
   <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <defs>
       <radialGradient id="brandSphere" cx="35%" cy="28%" r="85%">
@@ -559,36 +637,37 @@
 </div>
 
 <!-- Plane hover tooltip -->
-<div class="plane-tip" id="planeTip">
+<div class="plane-tip glass" id="planeTip">
   <img id="planeTipLogo" alt="">
   <span id="planeTipCs"></span>
 </div>
 
 <!-- Search + map-style toggle -->
 <div class="top-center">
-  <div class="search" aria-label="Search flights, airlines and airports">
+  <div class="search glass" aria-label="Search flights, airlines and airports">
     <span class="icon" aria-hidden="true">⌕</span>
     <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
            placeholder="Search flight, airline, airport, SEA-LAX…">
     <button class="search-chip" id="searchChip" title="Clear airline filter"></button>
     <button class="search-clear" id="searchClear" title="Clear search" aria-label="Clear search">✕</button>
   </div>
-  <div class="map-toggle" id="mapToggle" role="tablist" aria-label="Map style">
+  <div class="map-toggle glass" id="mapToggle" role="tablist" aria-label="Map style">
     <div class="mt-thumb" id="mtThumb"></div>
     <button class="mt-opt" data-mode="hybrid" role="tab">MAP</button>
     <button class="mt-opt" data-mode="satellite" role="tab">SATELLITE</button>
   </div>
 </div>
-<div class="search-results" id="searchResults"></div>
+<div class="search-results glass" id="searchResults"></div>
 
 <!-- Missing-key notice -->
-<div class="notice" id="notice"></div>
+<div class="notice glass" id="notice"></div>
 
 <!-- Airport weather card (live METAR) -->
-<div class="wx-card" id="wxCard"></div>
+<div class="wx-card glass" id="wxCard"></div>
 
 <!-- Flight detail panel -->
-<div class="panel" id="flightPanel">
+<div class="panel glass glass--liquid" id="flightPanel">
+ <div class="panel-scroll" id="fpScroll">
   <div class="panel-head">
     <div class="panel-ident">
       <img class="panel-logo" id="fpLogo" alt="">
@@ -620,30 +699,31 @@
     <div style="grid-column:1/-1"><span>SQUAWK</span><b id="fpSquawk">—</b></div>
     <div style="grid-column:1/-1"><span>COUNTRY OF REGISTRATION</span><b id="fpCountry">—</b></div>
   </div>
+ </div>
 </div>
 
 <!-- Camera controls -->
 <div class="controls" aria-label="Globe controls">
-  <button id="compass" class="compass" title="Point north" aria-label="Point north">
+  <button id="compass" class="compass glass" title="Point north" aria-label="Point north">
     <svg id="compassNeedle" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
       <path d="M8.8 11.5 L12 2 L15.2 11.5 Z" fill="#e53935"/>
       <text x="12" y="21.5" text-anchor="middle" font-size="9" font-weight="800" fill="#f5f5f5">N</text>
     </svg>
   </button>
-  <button id="zoomIn"  title="Zoom in"  aria-label="Zoom in">+</button>
-  <button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+  <button id="zoomIn"  class="glass" title="Zoom in"  aria-label="Zoom in">+</button>
+  <button id="zoomOut" class="glass" title="Zoom out" aria-label="Zoom out">−</button>
   <div class="divider"></div>
-  <button id="tiltUp"   title="Tilt up"   aria-label="Tilt up">⤒</button>
-  <button id="tiltDown" title="Tilt down" aria-label="Tilt down">⤓</button>
+  <button id="tiltUp"   class="glass" title="Tilt up"   aria-label="Tilt up">⤒</button>
+  <button id="tiltDown" class="glass" title="Tilt down" aria-label="Tilt down">⤓</button>
   <div class="divider"></div>
-  <button id="home" title="Reset view" aria-label="Reset view">⌂</button>
+  <button id="home" class="glass" title="Reset view" aria-label="Reset view">⌂</button>
 </div>
 
 <!-- My Flights -->
-<button class="mf-toggle" id="mfToggle" aria-expanded="false">
+<button class="mf-toggle glass" id="mfToggle" aria-expanded="false">
   <span class="star">★</span> My Flights
 </button>
-<div class="mf-panel" id="mfPanel">
+<div class="mf-panel glass" id="mfPanel">
   <div class="mf-head">
     <div class="mf-title">MY FLIGHTS</div>
     <a id="mfAuthLink">Sign in</a>
@@ -653,7 +733,7 @@
 
 <!-- Sign-in card -->
 <div class="auth-overlay" id="authOverlay">
-  <div class="auth-card">
+  <div class="auth-card glass glass--liquid">
     <button class="auth-close" id="authClose" aria-label="Close">✕</button>
     <h2 id="authTitle">Sign in</h2>
     <div class="sub">Save flights and spot them live on the globe.</div>
@@ -665,7 +745,7 @@
   </div>
 </div>
 
-<div class="hint" id="hint">Drag to pan &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Ctrl + drag to tilt</div>
+<div class="hint glass" id="hint">Drag to pan &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Ctrl + drag to tilt</div>
 
 <div id="loader"><div class="ring"></div><span>AeroNav3D</span></div>
 
