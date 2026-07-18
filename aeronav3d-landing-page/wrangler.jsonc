@@ -1,0 +1,9 @@
+{
+  // Cloudflare config for the aeronav3d.com landing page: static files only,
+  // served from dist/. The main app has its own wrangler.jsonc at the repo root.
+  "name": "aeronav3d-landing",
+  "compatibility_date": "2025-05-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
