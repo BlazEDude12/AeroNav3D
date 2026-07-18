@@ -2986,12 +2986,29 @@ let flipSeq = 0;
 function flipOpen() { return flipEl.classList.contains("open"); }
 
 function closeFlipBoard() {
-  if (!flipEl || !flipOpen()) return;
+  // Full dismiss: forget the airport too, so it won't come back on deselect.
+  if (!flipEl) return;
   flipSeq++;                       // abandon any in-flight lookup
   flipEl.classList.remove("open");
   flipEl.hidden = true;
   flipAirport = null;
   flipRows.innerHTML = "";
+}
+
+/* Tuck the board away while a flight is selected, but remember the airport so
+ * we can bring it back when the flight panel closes (they share the same spot). */
+function hideFlipBoard() {
+  if (!flipEl || !flipOpen()) return;
+  flipEl.classList.remove("open");
+  flipEl.hidden = true;
+}
+
+/* Restore the board for the active airport — but only while that airport is
+ * still what's in the search bar, and only when no flight is selected. */
+function restoreFlipBoard() {
+  if (!flipEl || !flipAirport || selectedHex) return;
+  if (!searchInput || !searchInput.value.trim()) { closeFlipBoard(); return; }
+  openFlipBoard(flipAirport);
 }
 
 function flipChars(text) {
@@ -3125,9 +3142,8 @@ if (featureOn("flipBoard")) {
     const row = e.target.closest(".flip-row");
     if (!row) return;
     const hex = row.dataset.hex;
-    closeFlipBoard();
     if (flights.has(hex)) {
-      selectFlight(hex);
+      selectFlight(hex);   // hides the board but keeps the airport for restore
       const f = flights.get(hex);
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(
@@ -4000,6 +4016,7 @@ function closeFlightPanel() {
   clearTrail();
   clearRouteDisplay();
   safe("timelineScrubber", () => clearScrub());
+  safe("flipBoard", () => restoreFlipBoard());   // bring the airport board back
 }
 document.getElementById("fpClose").addEventListener("click", closeFlightPanel);
 
@@ -4014,6 +4031,7 @@ function selectFlight(hex) {
   safe("timelineScrubber", () => clearScrub());
   selectedHex = hex;
   setSelectedColor(hex, true);
+  safe("flipBoard", () => hideFlipBoard());       // flight panel takes the spot
   const f = flights.get(hex);
   if (f) { updateFlightPanel(f.data); flightPanel.classList.add("open"); }
   updateStar();
@@ -4190,6 +4208,7 @@ searchClear.addEventListener("click", () => {
   searchInput.value = "";
   updateSearchClear();
   searchResults.style.display = "none";
+  safe("flipBoard", () => closeFlipBoard());   // airport left the search bar
   searchInput.focus();
 });
 
