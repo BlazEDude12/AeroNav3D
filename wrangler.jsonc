@@ -1,7 +1,7 @@
 {
   // Cloudflare Worker config: serves the repo as a static site and routes
   // /flights and /routes to worker.js (the ADS-B proxy).
-  "name": "aeronav3d",
+  "name": "aeronav3d-landing",
   "main": "worker.js",
   "compatibility_date": "2025-05-01",
   "assets": {
