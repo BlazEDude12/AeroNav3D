@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="AeroNav3D — interactive 3D globe powered by Cesium and Google Maps.">
 <title>AeroNav3D — 3D Globe</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 
@@ -59,10 +60,13 @@
     padding:10px 16px 10px 12px;
     user-select:none;
   }
-  .brand svg{display:block;}
-  .brand .name{font-size:17px;font-weight:700;letter-spacing:.04em;}
-  .brand .name em{font-style:normal;color:var(--accent);}
-  .brand .tag{font-size:10px;letter-spacing:.28em;color:var(--muted);margin-top:2px;text-transform:uppercase;}
+  .brand svg{display:block;filter:drop-shadow(0 2px 7px rgba(0,0,0,.55));}
+  .brand .name{font-size:17.5px;font-weight:700;letter-spacing:.015em;
+    background:linear-gradient(180deg,#ffffff,#c7d3e4);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .brand .name em{font-style:normal;-webkit-text-fill-color:var(--accent);
+    text-shadow:0 0 15px rgba(76,195,255,.55);}
+  .brand .tag{font-size:9.5px;letter-spacing:.3em;color:var(--muted);margin-top:3px;text-transform:uppercase;}
 
   /* ---------- Search + map-style toggle (top centre) ---------- */
   .top-center{
@@ -899,6 +903,39 @@
      input), and the compass (which draws its own curved one below). */
   .hint::before,.search::before,.map-toggle::before,.search-results::before{content:none;}
 
+  /* ---------- Premium accents ----------
+     A cooler hairline ties every surface to the blue mark; interactive glass
+     lifts a hair and warms on hover for a considered, tactile feel; the
+     accent picks up a soft bloom where it carries meaning. */
+  .panel,.scrub,.mf-panel,.mf-toggle,.map-toggle,.dens-toggle,.wx-card,
+  .notice,.cmdk,.flip,.search{
+    border-color:rgba(132,176,246,.18);
+  }
+  .mf-toggle,.controls button{
+    transition:background .18s ease,border-color .18s ease,
+      transform .18s cubic-bezier(.16,1,.3,1),filter .18s ease;
+  }
+  .mf-toggle:hover,.controls button:hover{
+    transform:translateY(-1px);filter:brightness(1.07);
+  }
+  .controls button:active{transform:scale(.94);}   /* keep the press feedback */
+  .dens-toggle{transition:color .2s,filter .18s ease;}
+  .dens-toggle:hover{filter:brightness(1.08);}
+  /* Search bar blooms softly when focused */
+  .search:focus-within{
+    border-color:rgba(120,180,255,.5);
+    box-shadow:0 0 0 3px rgba(76,195,255,.12),0 8px 24px -10px rgba(0,0,0,.6);
+  }
+  /* The big airport codes share the wordmark's brushed-metal gradient */
+  .route-ap b,.scrub-ap b{
+    background:linear-gradient(180deg,#ffffff,#c2cfe0);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .scrub-ap b{text-shadow:none;}
+  @media (prefers-reduced-motion: reduce){
+    .mf-toggle:hover,.controls button:hover{transform:none;}
+  }
+
   /* :where() keeps this at zero specificity so it can never beat a host's own
      `position` (a plain `.glass--liquid{position:relative}` silently overrode
      .panel's `position:absolute`, dropping it into normal flow). Hosts that
@@ -1116,10 +1153,10 @@
 <div class="brand glass" aria-label="AeroNav3D">
   <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <defs>
-      <radialGradient id="brandSphere" cx="35%" cy="28%" r="85%">
-        <stop offset="0%" stop-color="#28324b"/>
-        <stop offset="55%" stop-color="#0b101e"/>
-        <stop offset="100%" stop-color="#04060b"/>
+      <radialGradient id="brandSphere" cx="38%" cy="30%" r="90%">
+        <stop offset="0%" stop-color="#6f97bf"/>
+        <stop offset="42%" stop-color="#2b5079"/>
+        <stop offset="100%" stop-color="#091626"/>
       </radialGradient>
       <linearGradient id="brandArrowTop" x1="9" y1="21" x2="25" y2="9" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="#8f9aab"/>
