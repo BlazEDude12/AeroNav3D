@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["server.py"],
       "port": 8321
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5173", "--directory", "aeronav3d-landing-page/dist"],
+      "port": 5173
     }
   ]
 }
