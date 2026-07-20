@@ -60,3 +60,7 @@ Imagery: Google Maps Platform, Cesium, NASA GIBS (VIIRS Black Marble).
 Weather: [RainViewer](https://rainviewer.com) (precipitation radar),
 NOAA / [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) GOES-East,
 GOES-West and Himawari Band-13 infrared (cloud layer).
+3D aircraft models: [Flightradar24 fr24-3d-models](https://github.com/Flightradar24/fr24-3d-models)
+(GPL-2.0), built on [FlightGear](https://www.flightgear.org/) /
+[FGMEMBERS](https://github.com/FGMEMBERS). Loaded on demand from the jsDelivr
+CDN by ICAO type; not redistributed from this repo.

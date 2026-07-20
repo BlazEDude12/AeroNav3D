@@ -3186,6 +3186,52 @@ scene.preRender.addEventListener(() => {
 const MODEL_SHOW_RANGE_M = 30000;   // beyond this the model is subpixel — keep the glyph
 const MODEL_LENGTHS = { jet: 38, wide: 63, quad: 68, a380: 71, small: 8, heli: 12 };
 
+/* Real airframes come from Flightradar24's open-source model set
+ * (github.com/Flightradar24/fr24-3d-models, GPL-2.0, built on FlightGear/
+ * FGMEMBERS). Loaded on demand from the jsDelivr CDN — nothing GPL is
+ * vendored into this repo. Files are named by ICAO type, which is exactly
+ * what ac.t carries, so the map is mostly identity plus variant folding
+ * (737 MAX → 738, A20N → a320, …). The procedural builder stays only as an
+ * offline fallback if the CDN can't be reached. */
+const FR24_MODEL_BASE = "https://cdn.jsdelivr.net/gh/Flightradar24/fr24-3d-models@master/models/";
+const FR24_MODELS = new Set(["a318","a319","a320","a321","a332","a333","a343","a346","a359",
+  "a380","an225","ask21","atr42","b736","b737","b738","b739","b744","b748","b752","b753",
+  "b762","b763","b764","b772","b773","b788","b789","bae146","beluga","citation","crj700",
+  "crj900","cs100","cs300","e170","e190","heli","pa28","q400"]);
+// Variant → nearest available airframe (only for codes not already in the set)
+const FR24_ALIAS = {
+  b37m:"b737", b38m:"b738", b39m:"b739", b732:"b737", b733:"b737", b734:"b737", b735:"b736",
+  a19n:"a319", a20n:"a320", a21n:"a321", a338:"a332", a339:"a333", a337:"a333", a3st:"beluga",
+  a342:"a343", a345:"a346", a35k:"a359", a388:"a380",
+  b741:"b744", b742:"b744", b743:"b744", b74s:"b744", b74f:"b744", b74r:"b744", b74d:"b744",
+  b77w:"b773", b77l:"b772", b778:"b773", b779:"b773", b76f:"b763", b75f:"b752",
+  b78x:"b789", b78j:"b789", b788f:"b788",
+  e75l:"e170", e75s:"e170", e170:"e170", e175:"e170", e195:"e190", e290:"e190", e295:"e190",
+  e135:"e170", e145:"e170", e45x:"e170", e75:"e170",
+  crj7:"crj700", crj9:"crj900", crj2:"crj700", crj1:"crj700", crjx:"crj900",
+  bcs1:"cs100", bcs3:"cs300", a221:"cs100", a223:"cs300",
+  at72:"atr42", at73:"atr42", at75:"atr42", at76:"atr42", at44:"atr42", at45:"atr42",
+  at46:"atr42", atr:"atr42", dh8d:"q400", dh8a:"q400", dh8b:"q400", dh8c:"q400",
+  b461:"bae146", b462:"bae146", b463:"bae146", rj85:"bae146", rj1h:"bae146", rj70:"bae146",
+  an25:"an225",
+};
+// Icon class → a representative FR24 airframe when the exact type is unknown
+const FR24_BY_KLASS = { jet:"b738", wide:"b772", quad:"b744", a380:"a380", small:"pa28", heli:"heli" };
+const FR24_JET_BIZ = /^(C25|C50|C52|C55|C56|C68|C51|C750|CL30|CL35|CL60|GLF|GL5T|GL7T|G280|FA[0-9]|F900|F2TH|F7X|LJ[0-9]|E50P|E55P|PC24|H25B|HDJT|BE40|PRM1)/;
+const FR24_GA = /^(C1[0-9]{2}|C2[0-9]{2}|P28|PA[0-9]|SR2|DA[24]|BE[0-9]|M20|DR4|RV[0-9]|TBM|PC12|EPIC|SF50|GLAS|AA5|CH7|J3|COL[34])/;
+
+function fr24ModelName(ac) {
+  const t = (ac && ac.t || "").toLowerCase().trim();
+  if (t) {
+    if (FR24_MODELS.has(t)) return t;
+    if (FR24_ALIAS[t]) return FR24_ALIAS[t];
+    const T = t.toUpperCase();
+    if (FR24_JET_BIZ.test(T)) return "citation";
+    if (FR24_GA.test(T)) return "pa28";
+  }
+  return FR24_BY_KLASS[classifyAircraft(ac || {})] || "b738";   // still a real airframe
+}
+
 /* Brand colours per IATA code, [tail/primary, accent/secondary]. The logo
  * CDN (gstatic) sends no CORS headers, so its pixels can't be sampled or
  * painted onto a texture — a curated table is what "the airline's colours"
@@ -3566,31 +3612,71 @@ function buildAircraftGlb(klass, liveryCanvas, prim) {
   return u8;
 }
 
-// "klass|airline" -> Cesium.Model (or an in-flight promise while loading)
+// model key -> Cesium.Model (or an in-flight promise while loading). The key
+// is the FR24 airframe name, or "proc:<klass>" for an offline-fallback build.
 const aircraftModels = new Map();
-const MODEL_CACHE_MAX = 10;
-async function ensureAircraftModel(klass, livery) {
-  const key = klass + "|" + livery.key;
+const MODEL_CACHE_MAX = 8;
+
+function modelKeyFor(ac, klass) {
+  return "fr24:" + fr24ModelName(ac || { t: "", category: "" });
+}
+
+function retireOldModels(keepKey) {
+  for (const [k, v] of aircraftModels) {
+    if (aircraftModels.size <= MODEL_CACHE_MAX) break;
+    if (k !== keepKey && v instanceof Cesium.Model && !v.show) {
+      scene.primitives.remove(v);   // remove() also destroys it
+      aircraftModels.delete(k);
+    }
+  }
+}
+
+// Offline fallback: the code-generated airframe, keyed by class.
+function ensureProcModel(klass) {
+  const key = "proc:" + klass;
   const hit = aircraftModels.get(key);
   if (hit) return hit;
-  const glb = buildAircraftGlb(klass,
-    makeLiveryCanvas(livery.primary, livery.secondary, livery.title),
-    hexToRgb01(livery.primary));
+  const glb = buildAircraftGlb(klass, makeLiveryCanvas(LIVERY_DEFAULT.primary, LIVERY_DEFAULT.secondary, ""),
+    hexToRgb01(LIVERY_DEFAULT.primary));
   const url = URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
+  // Procedural airframes are authored nose +X, up +Z.
   const p = Cesium.Model.fromGltfAsync({ url, upAxis: Cesium.Axis.Z, forwardAxis: Cesium.Axis.X })
     .then((model) => {
-      model.show = false;   // unlit material: shading is baked into the mesh
+      model.show = false;
+      model._noseOffset = MODEL_HDG_OFFSET;
       scene.primitives.add(model);
       aircraftModels.set(key, model);
-      // One model per airline adds up on a long session — retire the oldest
-      for (const [k, v] of aircraftModels) {
-        if (aircraftModels.size <= MODEL_CACHE_MAX) break;
-        if (k !== key && v instanceof Cesium.Model && !v.show) {
-          scene.primitives.remove(v);          // remove() also destroys it
-          aircraftModels.delete(k);
-        }
-      }
+      retireOldModels(key);
       return model;
+    }).catch(() => { aircraftModels.delete(key); return null; });
+  aircraftModels.set(key, p);
+  return p;
+}
+
+async function ensureAircraftModel(ac, klass) {
+  const key = modelKeyFor(ac, klass);
+  const hit = aircraftModels.get(key);
+  if (hit) return hit;
+  const url = FR24_MODEL_BASE + key.slice(5) + ".glb";
+  // FR24 (FlightGear-derived) models use the default glTF axes — overriding
+  // them tips the airframe nose-down; the 90° fuselage offset is applied below.
+  const p = Cesium.Model.fromGltfAsync({ url, incrementallyLoadTextures: false,
+    credit: new Cesium.Credit("3D models: Flightradar24 / FlightGear (GPL-2.0)") })
+    .then((model) => {
+      model.show = false;
+      // FR24 (FlightGear) fuselage runs along model X, so the nose sits 90°
+      // off the heading axis — turn it right a quarter to fly down its track.
+      model._noseOffset = -Math.PI / 2;
+      // FR24 models are pre-lit for a bright viewer; keep them readable at night
+      model.lightColor = new Cesium.Cartesian3(1.7, 1.7, 1.7);
+      scene.primitives.add(model);
+      aircraftModels.set(key, model);
+      retireOldModels(key);
+      return model;
+    }).catch((e) => {
+      console.warn("FR24 model", key, "failed, using generated fallback:", e.message || e);
+      aircraftModels.delete(key);
+      return ensureProcModel(klass);          // CDN unreachable — code-built airframe
     });
   aircraftModels.set(key, p);
   return p;
@@ -3622,10 +3708,9 @@ function update3DModel() {
     const f = selectedHex && flights.get(selectedHex);
     let m = null;
     if (f && f.data) {
-      const livery = liveryFor(f.data.flight);
-      const cand = aircraftModels.get(f.klass + "|" + livery.key);
+      const cand = aircraftModels.get(modelKeyFor(f.data, f.klass));
       if (cand instanceof Cesium.Model) m = cand;
-      else if (!cand) ensureAircraftModel(f.klass, livery);   // late reclassification/callsign
+      else if (!cand) ensureAircraftModel(f.data, f.klass);   // type/class resolved now
     }
     const near = f && Cesium.Cartesian3.distance(viewer.camera.positionWC, f.billboard.position) < MODEL_SHOW_RANGE_M;
     const active = m && (near || view3d) ? m : null;
@@ -3642,12 +3727,11 @@ function update3DModel() {
       return;
     }
 
-    const hdg = planeHeading(f);
-    const vr = typeof f.data.baro_rate === "number" ? f.data.baro_rate : 0;
-    const gsMs = (f.data.gs || 0) * KNOTS_TO_MS;
-    _mHpr.heading = Cesium.Math.toRadians(hdg) - MODEL_HDG_OFFSET;
-    // Nose follows the vertical rate (ft/min → m/s), clamped to a real deck angle
-    _mHpr.pitch = gsMs > 30 ? Math.max(-.21, Math.min(.21, Math.atan2(vr * .00508, gsMs))) : 0;
+    const hdg = planeHeading(f);   // direction of travel along the ADS-B trail
+    // Fly level, pointed where it's going — no nose-up/down from vertical rate.
+    // Offset depends on how the model was authored (FR24 vs procedural).
+    _mHpr.heading = Cesium.Math.toRadians(hdg) - (active._noseOffset || 0);
+    _mHpr.pitch = 0;
     _mHpr.roll = 0;
     Cesium.Transforms.headingPitchRollToFixedFrame(
       f.billboard.position, _mHpr, Cesium.Ellipsoid.WGS84, undefined, active.modelMatrix);
@@ -3700,7 +3784,7 @@ function enterView3d() {
   const btn = document.getElementById("fp3d");
   btn.classList.add("active");
   btn.setAttribute("aria-pressed", "true");
-  ensureAircraftModel(f.klass, liveryFor(f.data && f.data.flight));
+  ensureAircraftModel(f.data, f.klass);
   const len = MODEL_LENGTHS[f.klass] || 40;
   // Rear-left three-quarter view, slightly above — the classic chase angle
   viewer.camera.lookAt(f.billboard.position,
@@ -5183,7 +5267,7 @@ function selectFlight(hex) {
   const f = flights.get(hex);
   if (f) { updateFlightPanel(f.data); flightPanel.classList.add("open"); }
   // Start the 3D model load now so it's ready if the camera comes close
-  if (f && models3dOk) ensureAircraftModel(f.klass, liveryFor(f.data && f.data.flight)).catch(() => {});
+  if (f && models3dOk) ensureAircraftModel(f.data, f.klass).catch(() => {});
   updateStar();
   if (trailHex !== hex) showTrail(hex);
   if (routeHex !== hex) showRoute(hex);
