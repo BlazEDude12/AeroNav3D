@@ -71,7 +71,7 @@
   /* ---------- Search + map-style toggle (top centre) ---------- */
   .top-center{
     position:absolute;top:26px;left:50%;transform:translateX(-50%);z-index:12;
-    display:flex;align-items:stretch;gap:10px;height:44px;
+    display:flex;align-items:stretch;gap:12px;height:44px;
   }
   .search{
     width:min(400px,32vw);display:flex;align-items:center;gap:9px;
@@ -112,26 +112,19 @@
   }
   .mt-opt.active{color:var(--text);}
   .mt-opt:hover{color:var(--text);}
-  /* ---------- Feature #9: density toggle ---------- */
+  /* ---------- View controls: map switch + layer icon toggles ----------
+     Grouped as one snug cluster so the top bar reads as Search · Views ·
+     My Flights — three things, not six. Density and Weather are compact icon
+     toggles (label lives in the tooltip) to cut the button clutter. */
+  .view-controls{display:flex;align-items:stretch;gap:6px;flex:none;}
   .dens-toggle{
-    flex:none;display:flex;align-items:center;gap:7px;cursor:pointer;
-    padding:0 14px;--glass-radius:12px;color:var(--muted);
-    font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.07em;
+    flex:none;display:flex;align-items:center;justify-content:center;
+    width:44px;padding:0;--glass-radius:12px;color:var(--muted);cursor:pointer;
     transition:color .2s;
   }
+  .dens-toggle .lb-ic{width:18px;height:18px;display:block;}
   .dens-toggle:hover{color:var(--text);}
-  .dens-toggle[aria-pressed="true"]{color:var(--text);}
-  .dens-dot{
-    width:8px;height:8px;border-radius:50%;flex:none;
-    background:rgba(255,255,255,.22);transition:background .2s,box-shadow .2s;
-  }
-  .dens-toggle[aria-pressed="true"] .dens-dot{
-    background:var(--accent);box-shadow:0 0 8px rgba(76,195,255,.8);
-  }
-  @media (max-width:900px){
-    .dens-toggle .dens-label{display:none;}
-    .dens-toggle{padding:0 11px;}
-  }
+  .dens-toggle[aria-pressed="true"]{color:#eaf3ff;}
 
   .search-chip{
     display:none;align-items:center;gap:6px;flex:none;cursor:pointer;
@@ -953,6 +946,89 @@
     .mf-toggle:hover,.controls button:hover{transform:none;}
   }
 
+  /* ---------- Top-bar uplift ----------
+     One tactile language across the search, the map switch, the density and
+     weather chips, and My Flights: each glass surface lifts a hair and its
+     hairline warms on hover; the accent shows up only where a control is
+     actually engaged, so "on" reads at a glance. */
+  .search,.map-toggle,.dens-toggle{
+    transition:transform .18s cubic-bezier(.16,1,.3,1),border-color .18s ease,
+      box-shadow .18s ease,background .2s ease,color .2s ease,filter .18s ease;
+  }
+  .search:hover,.map-toggle:hover,.dens-toggle:hover{
+    transform:translateY(-1px);border-color:rgba(140,185,255,.34);
+  }
+  .map-toggle:hover,.dens-toggle:hover{
+    box-shadow:0 1px 0 rgba(var(--glass-tint),.22) inset,
+      0 10px 26px -12px rgba(0,0,0,.6);
+  }
+  @media (prefers-reduced-motion: reduce){
+    .search:hover,.map-toggle:hover,.dens-toggle:hover,.search:focus-within{transform:none;}
+  }
+
+  /* Search: the icon lights up on focus, a warmer bloom, and a ⌘K badge that
+     steps aside the instant you focus or start typing. */
+  .search .icon{transition:color .2s ease;font-size:15px;}
+  .search:focus-within .icon{color:var(--accent);}
+  .search:focus-within{
+    transform:translateY(-1px);
+    box-shadow:0 0 0 3px rgba(76,195,255,.16),
+      0 1px 0 rgba(var(--glass-tint),.20) inset,
+      0 12px 30px -12px rgba(0,0,0,.7);
+  }
+  .search input{font-size:13.5px;letter-spacing:.01em;}
+  .search-kbd{
+    flex:none;display:inline-flex;align-items:center;padding:2px 7px;
+    border-radius:7px;font:600 10.5px/1 var(--ui,system-ui),system-ui;
+    letter-spacing:.04em;color:var(--muted);
+    background:rgba(var(--glass-tint),.07);
+    border:1px solid rgba(var(--glass-tint),.16);
+    box-shadow:0 1px 0 rgba(0,0,0,.25);
+    transition:opacity .16s ease;pointer-events:none;
+  }
+  .search:focus-within .search-kbd{opacity:0;}
+  .search input:not(:placeholder-shown) ~ .search-kbd{display:none;}
+
+  /* Map switch: a crisper, accent-kissed thumb and a soft glow on the selected
+     label. */
+  .mt-thumb{
+    background:linear-gradient(180deg,rgba(150,195,255,.22),
+      rgba(120,165,230,.08) 48%,rgba(0,0,0,.12));
+    border-color:rgba(150,190,255,.34);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.34),
+      inset 0 -1px 0 rgba(0,0,0,.25),0 3px 10px -2px rgba(0,0,0,.5);
+  }
+  .mt-opt.active{text-shadow:0 0 12px rgba(140,190,255,.45);}
+
+  /* Density / Weather: the engaged state is a filled accent chip, not just
+     brighter text. */
+  .dens-toggle[aria-pressed="true"]{
+    background:linear-gradient(180deg,rgba(76,150,235,.26),rgba(46,96,170,.15)),
+      rgba(var(--glass-scrim),var(--glass-scrim-alpha));
+    border-color:rgba(120,180,255,.5);
+    box-shadow:0 0 0 1px rgba(76,150,235,.18) inset,
+      0 8px 22px -12px rgba(40,110,220,.7);
+  }
+  .dens-toggle[aria-pressed="true"] .lb-ic{
+    filter:drop-shadow(0 0 6px rgba(120,195,255,.85));
+  }
+
+  /* My Flights: a filled, considered chip with a touch of warmth on the star. */
+  .mf-toggle{
+    background:linear-gradient(180deg,rgba(var(--glass-tint),.10),
+      rgba(var(--glass-tint),.02) 40%),
+      rgba(var(--glass-scrim),var(--glass-scrim-alpha));
+    box-shadow:0 1px 0 rgba(var(--glass-tint),.20) inset,
+      0 8px 22px -12px rgba(0,0,0,.6);
+    font-weight:600;
+  }
+  .mf-toggle .star{filter:drop-shadow(0 0 6px rgba(255,200,90,.55));}
+  .mf-toggle[aria-expanded="true"]{
+    border-color:rgba(140,190,255,.5);
+    background:linear-gradient(180deg,rgba(76,140,230,.22),rgba(40,90,170,.12)),
+      rgba(var(--glass-scrim),var(--glass-scrim-alpha));
+  }
+
   /* :where() keeps this at zero specificity so it can never beat a host's own
      `position` (a plain `.glass--liquid{position:relative}` silently overrode
      .panel's `position:absolute`, dropping it into normal flow). Hosts that
@@ -1220,20 +1296,31 @@
            placeholder="Search flight, airline, airport, SEA-LAX…">
     <button class="search-chip" id="searchChip" title="Clear airline filter"></button>
     <button class="search-clear" id="searchClear" title="Clear search" aria-label="Clear search">✕</button>
+    <kbd class="search-kbd" aria-hidden="true" title="Open command palette">⌘K</kbd>
   </div>
-  <div class="map-toggle glass" id="mapToggle" role="tablist" aria-label="Map style">
-    <div class="mt-thumb" id="mtThumb"></div>
-    <button class="mt-opt" data-mode="hybrid" role="tab">MAP</button>
-    <button class="mt-opt" data-mode="satellite" role="tab">SATELLITE</button>
+  <div class="view-controls">
+    <div class="map-toggle glass" id="mapToggle" role="tablist" aria-label="Map style">
+      <div class="mt-thumb" id="mtThumb"></div>
+      <button class="mt-opt" data-mode="hybrid" role="tab">MAP</button>
+      <button class="mt-opt" data-mode="satellite" role="tab">SATELLITE</button>
+    </div>
+    <button class="dens-toggle glass" id="densToggle" aria-pressed="false"
+            aria-label="Traffic density" title="Traffic density — where aircraft are concentrated">
+      <svg class="lb-ic" viewBox="0 0 20 20" aria-hidden="true" fill="currentColor">
+        <circle cx="5" cy="5" r="1.3" opacity=".5"/><circle cx="10" cy="5" r="1.7" opacity=".78"/><circle cx="15" cy="5" r="1.1" opacity=".38"/>
+        <circle cx="5" cy="10" r="1.7" opacity=".78"/><circle cx="10" cy="10" r="2.3"/><circle cx="15" cy="10" r="1.5" opacity=".68"/>
+        <circle cx="5" cy="15" r="1.1" opacity=".38"/><circle cx="10" cy="15" r="1.6" opacity=".72"/><circle cx="15" cy="15" r="1.2" opacity=".48"/>
+      </svg>
+    </button>
+    <button class="dens-toggle glass" id="wxToggle" aria-pressed="false"
+            aria-label="Weather radar" title="Live clouds & precipitation radar">
+      <svg class="lb-ic" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6.2 12.4a2.9 2.9 0 0 1 .3-5.8 3.8 3.8 0 0 1 7.1 1.05 2.5 2.5 0 0 1 0 4.75Z" fill="currentColor" stroke="none"/>
+        <path d="M7.6 14.4l-.9 2M10.4 14.4l-.9 2M13.2 14.4l-.9 2"/>
+      </svg>
+    </button>
   </div>
-  <button class="dens-toggle glass" id="densToggle" aria-pressed="false"
-          title="Show where the live traffic is concentrated">
-    <span class="dens-dot" aria-hidden="true"></span><span class="dens-label">DENSITY</span>
-  </button>
-  <button class="dens-toggle glass" id="wxToggle" aria-pressed="false"
-          title="Live clouds and precipitation radar">
-    <span class="dens-dot" aria-hidden="true"></span><span class="dens-label">WEATHER</span>
-  </button>
 </div>
 <div class="search-results glass" id="searchResults"></div>
 
@@ -3836,6 +3923,7 @@ async function ensureAircraftModel(ac, klass) {
       // off the heading axis — turn it right a quarter to fly down its track.
       model._noseOffset = -Math.PI / 2;
       model._attFlip = -1;   // FlightGear mesh nose −Z: climb needs −pitch here
+      model._fr24 = true;    // procedural gear aligns to the FR24 mesh frame
       // FR24 models are pre-lit for a bright viewer; keep them readable at night
       model.lightColor = new Cesium.Cartesian3(1.7, 1.7, 1.7);
       scene.primitives.add(model);
@@ -3849,6 +3937,165 @@ async function ensureAircraftModel(ac, klass) {
     });
   aircraftModels.set(key, p);
   return p;
+}
+
+/* ----- Landing gear (deploy on takeoff/landing) -----------------------
+ * The FR24 airframes ship in a clean cruise config: no gear geometry, no
+ * animation nodes. So the tricycle gear is built here as its own little GLB
+ * and flown as a second model locked to the aircraft's frame. It is authored
+ * in the same raw glTF axes the FR24 meshes use (X = length, nose at −X;
+ * Y = lateral; Z = up, belly ≈ −1.5), positioned off the real wheel-well
+ * nodes of the reference 737 (nose well ≈ X−16, mains ≈ X0.25 / Y±1.1), then
+ * scaled to whatever airframe is selected. Deploy is a 0→1 factor: at 1 the
+ * gear hangs below the belly, at 0 it slides straight up into the wells. */
+const GEAR_REF_RADIUS = 27.2;   // bounding radius of the reference 737 mesh
+const GEAR_DROP = 2.9;          // how far (ref units) wheels sit below the belly
+const GEAR_ALT_FT = 1500;       // gear is down on the ground and below this alt
+const GEAR_TAU = 1.4;           // easing time constant (s) — a few seconds to cycle
+const GEAR_RETRACTABLE = new Set(["jet", "wide", "quad", "a380"]);
+
+function buildGearGlb() {
+  const P = [], N = [], C = [], I = [];
+  let vi = 0;
+  const STRUT = [0.34, 0.36, 0.40], TIRE = [0.07, 0.07, 0.08];
+  // Axis-aligned box by centre + half-extents.
+  const box = (c, h, col) => {
+    const s = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+    const v = s.map((q) => [c[0]+q[0]*h[0], c[1]+q[1]*h[1], c[2]+q[2]*h[2]]);
+    const faces = [[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[3,2,6,7],[4,5,1,0]];
+    const fn = [[0,0,-1],[0,0,1],[-1,0,0],[1,0,0],[0,1,0],[0,-1,0]];
+    faces.forEach((f, fi) => {
+      const b = vi;
+      f.forEach((k) => { P.push(...v[k]); N.push(...fn[fi]); C.push(...col); });
+      I.push(b,b+1,b+2, b,b+2,b+3); vi += 4;
+    });
+  };
+  // Wheel: short cylinder with its axle along Y (lateral), plus end caps.
+  const wheel = (c, r, hl, col, seg = 10) => {
+    const [cx, cy, cz] = c;
+    for (let i = 0; i < seg; i++) {
+      const a0 = i/seg*2*Math.PI, a1 = (i+1)/seg*2*Math.PI, am = (a0+a1)/2;
+      const p = (a, y) => [cx+Math.cos(a)*r, cy+y, cz+Math.sin(a)*r];
+      const nx = [Math.cos(am), 0, Math.sin(am)];
+      [p(a0,-hl), p(a1,-hl), p(a1,hl), p(a0,hl)].forEach((pp) => { P.push(...pp); N.push(...nx); C.push(...col); });
+      I.push(vi,vi+1,vi+2, vi,vi+2,vi+3); vi += 4;
+      // caps: triangle fan on each side
+      for (const [y, ny, wind] of [[-hl,[0,-1,0],0],[hl,[0,1,0],1]]) {
+        const cb = vi;
+        P.push(cx, cy+y, cz); N.push(...ny); C.push(...col);
+        P.push(...p(a0,y)); N.push(...ny); C.push(...col);
+        P.push(...p(a1,y)); N.push(...ny); C.push(...col);
+        if (wind) I.push(cb,cb+1,cb+2); else I.push(cb,cb+2,cb+1);
+        vi += 3;
+      }
+    }
+  };
+  // Nose gear: single strut with a twin nose wheel.
+  box([-16, 0, -2.6], [0.16, 0.16, 1.2], STRUT);
+  wheel([-16, -0.24, -3.85], 0.42, 0.14, TIRE);
+  wheel([-16,  0.24, -3.85], 0.42, 0.14, TIRE);
+  // Main gear: a canted strut each side down to a two-wheel bogie.
+  for (const sgn of [-1, 1]) {
+    const yTop = sgn * 1.1, yBot = sgn * 2.5;
+    // strut approximated by two stacked boxes stepping outboard as they drop
+    box([0.25, (yTop+yBot)/2, -2.5], [0.2, Math.abs(yBot-yTop)/2 + 0.18, 0.22], STRUT);
+    box([0.25, yBot, -3.0], [0.22, 0.22, 0.9], STRUT);
+    wheel([-0.45, yBot, -3.85], 0.5, 0.16, TIRE);
+    wheel([ 0.95, yBot, -3.85], 0.5, 0.16, TIRE);
+  }
+
+  // ---- pack as GLB v2 (unlit vertex colours, no texture) ----
+  const pos = new Float32Array(P), nor = new Float32Array(N), col = new Float32Array(C);
+  const big = vi > 65535;
+  const idx = big ? new Uint32Array(I) : new Uint16Array(I);
+  const mins = [Infinity,Infinity,Infinity], maxs = [-Infinity,-Infinity,-Infinity];
+  for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 3; k++) {
+    mins[k] = Math.min(mins[k], P[i+k]); maxs[k] = Math.max(maxs[k], P[i+k]);
+  }
+  const align = (n) => Math.ceil(n/4)*4;
+  const o0 = 0, o1 = align(pos.byteLength), o2 = o1 + align(nor.byteLength),
+    o3 = o2 + align(col.byteLength), binLen = o3 + align(idx.byteLength);
+  const json = {
+    asset:{version:"2.0"}, scene:0, scenes:[{nodes:[0]}], nodes:[{mesh:0}],
+    extensionsUsed:["KHR_materials_unlit"],
+    meshes:[{primitives:[{attributes:{POSITION:0,NORMAL:1,COLOR_0:2},indices:3,material:0}]}],
+    materials:[{pbrMetallicRoughness:{baseColorFactor:[1,1,1,1],metallicFactor:0,roughnessFactor:1},
+      doubleSided:true, extensions:{KHR_materials_unlit:{}}}],
+    buffers:[{byteLength:binLen}],
+    bufferViews:[
+      {buffer:0,byteOffset:o0,byteLength:pos.byteLength,target:34962},
+      {buffer:0,byteOffset:o1,byteLength:nor.byteLength,target:34962},
+      {buffer:0,byteOffset:o2,byteLength:col.byteLength,target:34962},
+      {buffer:0,byteOffset:o3,byteLength:idx.byteLength,target:34963}],
+    accessors:[
+      {bufferView:0,componentType:5126,count:vi,type:"VEC3",min:mins,max:maxs},
+      {bufferView:1,componentType:5126,count:vi,type:"VEC3"},
+      {bufferView:2,componentType:5126,count:vi,type:"VEC3"},
+      {bufferView:3,componentType:big?5125:5123,count:I.length,type:"SCALAR"}]
+  };
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(json));
+  const jLen = align(jsonBytes.length);
+  const total = 12 + 8 + jLen + 8 + binLen;
+  const glb = new ArrayBuffer(total);
+  const dv = new DataView(glb), u8 = new Uint8Array(glb);
+  dv.setUint32(0, 0x46546C67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, jLen, true); dv.setUint32(16, 0x4E4F534A, true);
+  u8.set(jsonBytes, 20); u8.fill(0x20, 20 + jsonBytes.length, 20 + jLen);
+  const bo = 20 + jLen;
+  dv.setUint32(bo, binLen, true); dv.setUint32(bo+4, 0x004E4942, true);
+  u8.set(new Uint8Array(pos.buffer), bo+8+o0);
+  u8.set(new Uint8Array(nor.buffer), bo+8+o1);
+  u8.set(new Uint8Array(col.buffer), bo+8+o2);
+  u8.set(new Uint8Array(idx.buffer), bo+8+o3);
+  return u8;
+}
+
+let gearModel = null;   // single reusable gear model, or an in-flight promise
+function ensureGearModel() {
+  if (gearModel) return gearModel;
+  const glb = buildGearGlb();
+  const url = URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
+  // Load with the DEFAULT axes, exactly like the FR24 airframes, so the gear
+  // shares their axis correction and lines up in raw glTF space.
+  const p = Cesium.Model.fromGltfAsync({ url })
+    .then((model) => {
+      model.show = false;
+      scene.primitives.add(model);
+      gearModel = model;
+      return model;
+    }).catch(() => { gearModel = null; return null; });
+  gearModel = p;
+  return p;
+}
+
+const _gearUp = new Cesium.Cartesian3();
+// Position/show the gear under `active` for flight `f`, whose airframe matrix
+// is already in active.modelMatrix. `dt` is the frame's elapsed seconds.
+// Retractable jets only; others never fit it.
+function updateGear(active, f, dt) {
+  const gm = gearModel instanceof Cesium.Model ? gearModel : (ensureGearModel(), null);
+  if (!gm) return;
+  // `active.ready` MUST gate `boundingSphere`: the getter reads the model's
+  // scene graph, which throws while the airframe is still loading — and one
+  // throw here would trip the fail-soft flag and kill 3D for the session.
+  const eligible = active && active.ready && active._fr24 && GEAR_RETRACTABLE.has(f.klass);
+  if (!eligible) { gm.show = false; return; }
+  const alt = f.data.alt_baro;
+  const tgt = (alt === "ground" || (typeof alt === "number" && alt < GEAR_ALT_FT)) ? 1 : 0;
+  const k = 1 - Math.exp(-dt / GEAR_TAU);
+  f._gear = f._gear == null ? tgt : f._gear + (tgt - f._gear) * k;
+  if (f._gear < 0.02) { gm.show = false; return; }
+  const scale = active.boundingSphere.radius / GEAR_REF_RADIUS;
+  gm.scale = scale;
+  // Match the airframe's orientation, then slide the whole assembly up along
+  // world-up as it retracts so the wheels tuck back into the belly.
+  Cesium.Matrix4.clone(active.modelMatrix, gm.modelMatrix);
+  Cesium.Cartesian3.normalize(f.billboard.position, _gearUp);
+  const lift = (1 - f._gear) * GEAR_DROP * scale;
+  gm.modelMatrix[12] += _gearUp.x * lift;
+  gm.modelMatrix[13] += _gearUp.y * lift;
+  gm.modelMatrix[14] += _gearUp.z * lift;
+  gm.show = true;
 }
 
 /* What heading must be passed to headingPitchRollToFixedFrame so the frame's
@@ -3909,6 +4156,7 @@ function update3DModel() {
         applyAirlineFilter();          // the filter, not us, owns billboard.show
       }
       if (view3d && !f) exitView3d();  // the followed plane left the feed
+      if (gearModel instanceof Cesium.Model) gearModel.show = false;
       return;
     }
 
@@ -3947,6 +4195,8 @@ function update3DModel() {
       f.billboard.position, _mHpr, Cesium.Ellipsoid.WGS84, undefined, active.modelMatrix);
     active.id = "plane:" + selectedHex;   // clicking the model is just a reselect
     active.show = true;
+    updateGear(active, f, dt);   // deploy/retract the gear off the same frame
+
     // Stock livery: show each airframe exactly as it ships — no colour blend, so
     // the model's own paint/shading comes through untouched.
     try {
