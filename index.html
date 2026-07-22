@@ -1758,6 +1758,12 @@ reduceMotionMQ.addEventListener("change", () => {
  * Natural Earth II imagery (no extra dependencies).
  * ================================================= */
 const GOOGLE_MAPS_API_KEY = "AIzaSyA-n1jGuFhWQGcBPJNXauBWGnATg8Wg42U";
+// This key is HTTP-referrer-restricted in Google Cloud Console: it serves Map
+// Tiles only from the canonical host(s). On other origins (e.g.
+// blazedude12.github.io) createSession returns 404 and initImagery() falls back
+// to keyless Esri World Imagery automatically — visitors still get a satellite
+// globe. To serve Google imagery from a new domain, add it to the key's allowed
+// referrers; otherwise the Esri fallback covers that origin.
 const GOOGLE_MAP_TYPE = "satellite"; // "satellite" | "roadmap" | "terrain"
 // "hybrid" draws place names/roads over the imagery; "satellite" is bare.
 let mapMode = localStorage.getItem("mapMode") === "satellite" ? "satellite" : "hybrid";

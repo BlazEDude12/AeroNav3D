@@ -64,3 +64,13 @@ GOES-West and Himawari Band-13 infrared (cloud layer).
 (GPL-2.0), built on [FlightGear](https://www.flightgear.org/) /
 [FGMEMBERS](https://github.com/FGMEMBERS). Loaded on demand from the jsDelivr
 CDN by ICAO type; not redistributed from this repo.
+
+## License
+
+AeroNav3D is released under the **GNU Affero General Public License v3.0** — see
+[LICENSE](LICENSE). You're free to use, study, and modify it; if you run a
+modified version as a network service, you must offer that version's source
+under the same license. The 3D aircraft models are Flightradar24's (GPL-2.0),
+loaded from their CDN and not redistributed here (see Data credits above).
+
+© 2026 the AeroNav3D authors.
