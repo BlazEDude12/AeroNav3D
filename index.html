@@ -160,6 +160,19 @@
   .sr-item .badge{font-size:9px;letter-spacing:.15em;color:#39ff8e;flex:none;}
   .sr-empty{padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.5;}
 
+  /* ---------- Aircraft callout card (FR24-style logo + callsign) ----------
+     One floats with the hovered plane; a second can be pinned to a clicked
+     on-ground plane and rides with it until it takes off. */
+  .plane-tip{
+    position:absolute;z-index:15;display:none;align-items:center;gap:7px;
+    padding:5px 10px;border-radius:9px;white-space:nowrap;pointer-events:none;
+    --glass-scrim-alpha:.92;--glass-radius:9px;
+    font-size:12.5px;font-weight:700;letter-spacing:.05em;
+    transform:translate(-50%,-150%);will-change:left,top;
+  }
+  .plane-tip img{width:18px;height:18px;border-radius:4px;background:#fff;
+    object-fit:contain;padding:1px;display:none;}
+
   /* ---------- Controls ---------- */
   .controls{
     position:absolute;right:20px;bottom:28px;z-index:10;
@@ -1251,6 +1264,11 @@
     <div class="tag" id="brandTag">Global Navigation</div>
   </div>
 </div>
+
+<!-- Aircraft callout cards: one follows the hovered plane, one can be pinned
+     to a clicked on-ground plane until it takes off -->
+<div class="plane-tip glass" id="tipHover"><img alt=""><span></span></div>
+<div class="plane-tip glass" id="tipPin"><img alt=""><span></span></div>
 
 <!-- Search + map-style toggle -->
 <div class="top-center">
@@ -3303,6 +3321,7 @@ scene.preRender.addEventListener(() => {
     ghostBb.height = ghostBb.width * Math.max(_rSquash, 0.42);
   }
   update3DModel();
+  updatePlaneTips();
 });
 
 /* ----- 3D aircraft on selection (FR24-style) --------------------------
@@ -3824,6 +3843,7 @@ async function ensureAircraftModel(ac, klass) {
  * scaled to whatever airframe is selected. Deploy is a 0→1 factor: at 1 the
  * gear hangs below the belly, at 0 it slides straight up into the wells. */
 const GEAR_REF_RADIUS = 27.2;   // bounding radius of the reference 737 mesh
+const GEAR_REF_CENTER_UP = 4.15; // ref mesh bound-centre height above its origin
 const GEAR_DROP = 2.9;          // how far (ref units) wheels sit below the belly
 const GEAR_ALT_FT = 1500;       // gear is down on the ground and below this alt
 const GEAR_TAU = 1.4;           // easing time constant (s) — a few seconds to cycle
@@ -3970,11 +3990,39 @@ function updateGear(active, f, dt) {
   // world-up as it retracts so the wheels tuck back into the belly.
   Cesium.Matrix4.clone(active.modelMatrix, gm.modelMatrix);
   Cesium.Cartesian3.normalize(f.billboard.position, _gearUp);
+  const m = gm.modelMatrix;
+  // The FR24 meshes disagree on where their origin sits — the 737 (which the
+  // gear was authored against) is centred, but e.g. the 757 puts the origin at
+  // the NOSE, which used to leave the gear floating ahead of the airframe. So
+  // calibrate once per model: the offset between the mesh's real bounding
+  // centre and where a 737-style mesh's centre would be, captured in the
+  // plane's local frame so it stays put through turns. The capture compares
+  // against the PREVIOUS frame's translation, matching the frame the bounding
+  // sphere was computed in.
+  if (!active._gearFix && active._gearPrevT) {
+    const bs = active.boundingSphere.center, p = active._gearPrevT;
+    const fx = bs.x - p.x - _gearUp.x * GEAR_REF_CENTER_UP * scale;
+    const fy = bs.y - p.y - _gearUp.y * GEAR_REF_CENTER_UP * scale;
+    const fz = bs.z - p.z - _gearUp.z * GEAR_REF_CENTER_UP * scale;
+    // Sanity: a real origin offset can't exceed the airframe itself. A bigger
+    // value means the bound was measured in a different frame (fast camera
+    // cut, first visible frame) — skip and calibrate on a later frame.
+    if (Math.hypot(fx, fy, fz) <= active.boundingSphere.radius * 1.5) {
+      active._gearFix = new Cesium.Cartesian3(     // world → local (frame columns)
+        fx * m[0] + fy * m[1] + fz * m[2],
+        fx * m[4] + fy * m[5] + fz * m[6],
+        fx * m[8] + fy * m[9] + fz * m[10]);
+    }
+  }
+  if (!active._gearPrevT) active._gearPrevT = new Cesium.Cartesian3();
+  active._gearPrevT.x = m[12]; active._gearPrevT.y = m[13]; active._gearPrevT.z = m[14];
   const lift = (1 - f._gear) * GEAR_DROP * scale;
-  gm.modelMatrix[12] += _gearUp.x * lift;
-  gm.modelMatrix[13] += _gearUp.y * lift;
-  gm.modelMatrix[14] += _gearUp.z * lift;
-  gm.show = true;
+  const gf = active._gearFix;
+  const ax = (gf ? m[0] * gf.x + m[4] * gf.y + m[8]  * gf.z : 0) + _gearUp.x * lift;
+  const ay = (gf ? m[1] * gf.x + m[5] * gf.y + m[9]  * gf.z : 0) + _gearUp.y * lift;
+  const az = (gf ? m[2] * gf.x + m[6] * gf.y + m[10] * gf.z : 0) + _gearUp.z * lift;
+  m[12] += ax; m[13] += ay; m[14] += az;
+  gm.show = gf != null;   // first frame is calibration-only — draw from the next
 }
 
 /* What heading must be passed to headingPitchRollToFixedFrame so the frame's
@@ -5742,21 +5790,139 @@ function pickPlaneId(pos) {
   return null;
 }
 
+/* ----- Aircraft callout cards (hover + ground pin) --------------------
+ * Hovering any aircraft floats an FR24-style card — airline logo and
+ * callsign — over it. Clicking a plane that is ON THE GROUND pins a card to
+ * it: the card rides with the aircraft through taxi and hold, and lets go by
+ * itself the moment the plane lifts off. Airborne aircraft are hover-only,
+ * until their next landing makes them pinnable again. Clicking the same
+ * ground plane a second time unpins it. */
+let tipHoverHex = null;
+let tipPinHex = null;
+const tipHoverEl = document.getElementById("tipHover");
+const tipPinEl = document.getElementById("tipPin");
+for (const el of [tipHoverEl, tipPinEl]) {
+  el.querySelector("img").addEventListener("error", (e) => { e.target.style.display = "none"; });
+}
+const _tipWin = new Cesium.Cartesian2();
+
+function tipSet(el, f, hex) {
+  const cs = (f.data.flight || "").trim() || hex.toUpperCase();
+  if (el._cs === cs) return;
+  el._cs = cs;
+  el.querySelector("span").textContent = cs;
+  const img = el.querySelector("img");
+  const al = airlineFor(cs);
+  if (al) {
+    img.src = `https://www.gstatic.com/flights/airline_logos/70px/${al[0]}.png`;
+    img.style.display = "block";
+  } else {
+    img.style.display = "none";
+    img.removeAttribute("src");
+  }
+}
+function tipPlace(el, f) {
+  const w2w = Cesium.SceneTransforms.worldToWindowCoordinates
+    || Cesium.SceneTransforms.wgs84ToWindowCoordinates;
+  const win = w2w.call(Cesium.SceneTransforms, scene, f.billboard.position, _tipWin);
+  if (!win) { el.style.display = "none"; return; }
+  el.style.left = win.x + "px";
+  el.style.top = win.y + "px";
+  el.style.display = "flex";
+}
+/* Ground tags: every aircraft sitting on the ground near the camera wears its
+ * callout automatically — the ramp reads like a real airport view with each
+ * taxiing and holding jet labelled. Airborne traffic stays hover-only.
+ * Range-gated and capped so a distant or busy view can't wallpaper itself. */
+const GROUND_TAG_RANGE_M = 20000;   // camera-to-plane cutoff (zoomed-in only)
+const GROUND_TAG_MAX = 14;          // most simultaneous ground tags
+const GROUND_TAG_RESELECT = 30;     // frames between re-picking the set
+const groundTagPool = [];           // reusable DOM cards
+let groundTagSet = [];              // [{hex,f}] currently tagged
+let _gtFrame = 0;
+
+function groundTagEl(i) {
+  let el = groundTagPool[i];
+  if (el) return el;
+  el = document.createElement("div");
+  el.className = "plane-tip glass";
+  const img = document.createElement("img");
+  img.alt = "";
+  img.addEventListener("error", () => { img.style.display = "none"; });
+  el.append(img, document.createElement("span"));
+  document.body.appendChild(el);
+  groundTagPool[i] = el;
+  return el;
+}
+
+// Runs every frame from the motion loop, so every card rides its aircraft.
+function updatePlaneTips() {
+  if (tipPinHex) {
+    const pf = flights.get(tipPinHex);
+    if (!pf || !pf.data || pf.data.alt_baro !== "ground") {
+      tipPinHex = null;                       // lifted off (or vanished) — let go
+    } else {
+      tipSet(tipPinEl, pf, tipPinHex);
+      tipPlace(tipPinEl, pf);
+    }
+  }
+  if (!tipPinHex) tipPinEl.style.display = "none";
+  const hf = tipHoverHex && tipHoverHex !== tipPinHex && flights.get(tipHoverHex);
+  if (hf && hf.data) {
+    tipSet(tipHoverEl, hf, tipHoverHex);
+    tipPlace(tipHoverEl, hf);
+  } else {
+    tipHoverEl.style.display = "none";
+  }
+  // Re-pick the on-ground set every so often; reposition it every frame.
+  if (_gtFrame++ % GROUND_TAG_RESELECT === 0) {
+    const cands = [];
+    flights.forEach((f, hex) => {
+      if (!f.data || f.data.alt_baro !== "ground" || !f.billboard) return;
+      const d = Cesium.Cartesian3.distance(viewer.camera.positionWC, f.billboard.position);
+      if (d <= GROUND_TAG_RANGE_M) cands.push({ hex, f, d });
+    });
+    cands.sort((a, b) => a.d - b.d);
+    groundTagSet = cands.slice(0, GROUND_TAG_MAX);
+  }
+  const n = Math.max(groundTagSet.length, groundTagPool.length);
+  for (let i = 0; i < n; i++) {
+    const e = groundTagSet[i];
+    // The pinned or hovered plane already wears a card — don't double-tag it,
+    // and drop tags whose aircraft left the feed or lifted off mid-cycle.
+    const ok = e && e.hex !== tipPinHex && e.hex !== tipHoverHex
+      && flights.get(e.hex) === e.f && e.f.data && e.f.data.alt_baro === "ground";
+    if (!ok) { if (groundTagPool[i]) groundTagPool[i].style.display = "none"; continue; }
+    const el = groundTagEl(i);
+    tipSet(el, e.f, e.hex);
+    tipPlace(el, e.f);
+  }
+}
+
 const pickHandler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
 pickHandler.setInputAction((evt) => {
   const id = pickPlaneId(evt.position);
   if (id) {
-    selectFlight(id.slice(6));
+    const hex = id.slice(6);
+    // On-ground aircraft pin their callout on click (again to unpin); the
+    // pin releases itself at take-off. Airborne aircraft stay hover-only.
+    const f = flights.get(hex);
+    if (f && f.data && f.data.alt_baro === "ground")
+      tipPinHex = tipPinHex === hex ? null : hex;
+    selectFlight(hex);
   } else {
     closeFlightPanel();
   }
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-/* Cursor feedback: pointer when hovering a plane (no callout card) */
+/* Hover: pointer cursor + the callout card floats over the aircraft */
 pickHandler.setInputAction((evt) => {
   const id = pickPlaneId(evt.endPosition);
-  scene.canvas.style.cursor = id && flights.has(id.slice(6)) ? "pointer" : "";
+  const hex = id && id.slice(6);
+  tipHoverHex = hex && flights.has(hex) ? hex : null;
+  scene.canvas.style.cursor = tipHoverHex ? "pointer" : "";
 }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+scene.canvas.addEventListener("mouseleave", () => { tipHoverHex = null; });
 
 /* ----- Map style toggle: hybrid (labels) vs pure satellite ----- */
 const mapToggle = document.getElementById("mapToggle");
