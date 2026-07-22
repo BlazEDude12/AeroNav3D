@@ -16,7 +16,9 @@ arrival airports), keeping the site same-origin in local dev.
 
 Usage: python server.py  (serves on http://localhost:8321)
 """
+import gzip
 import json
+import re
 import ssl
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -85,6 +87,8 @@ def _normalize_opensky(states):
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path == "/trace":
+            return self._proxy_trace(parse_qs(url.query))
         if url.path != "/flights":
             return super().do_GET()
         if parse_qs(url.query).get("global"):
@@ -112,6 +116,33 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(200, body.encode())
         except Exception as exc:  # rate-limited, down, timeout, ...
             self._send_json(502, json.dumps({"error": str(exc)}).encode())
+
+    def _proxy_trace(self, query):
+        """Full-day position trace for one aircraft from adsb.lol's tar1090
+        data (same files its own map draws). The upstream sends no CORS
+        headers, hence the proxy. Response: {"full": ..., "recent": ...},
+        either of which may be null. The files are pre-compressed and served
+        gzip regardless of Accept-Encoding, so decompress by header."""
+        icao = (query.get("icao") or [""])[0].lower().strip()
+        if not re.fullmatch(r"~?[0-9a-f]{6}", icao):
+            return self._send_json(400, json.dumps({"error": "bad icao"}).encode())
+        out = {}
+        for kind in ("full", "recent"):
+            try:
+                req = urllib.request.Request(
+                    f"https://adsb.lol/data/traces/{icao[-2:]}/trace_{kind}_{icao}.json",
+                    headers={"User-Agent": "AeroNav3D/1.0 (local proxy)"},
+                )
+                with _urlopen(req) as resp:
+                    body = resp.read()
+                    if resp.headers.get("Content-Encoding") == "gzip":
+                        body = gzip.decompress(body)
+                out[kind] = json.loads(body)
+            except Exception:  # 404 (no trace yet), timeout, malformed — skip
+                out[kind] = None
+        if out["full"] is None and out["recent"] is None:
+            return self._send_json(404, json.dumps({"error": "no trace"}).encode())
+        self._send_json(200, json.dumps(out).encode())
 
     def do_POST(self):
         if urlparse(self.path).path == "/routes":

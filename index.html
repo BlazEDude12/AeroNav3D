@@ -2269,11 +2269,57 @@ function rebuildLiveTrail() {
     : null;
 }
 
+/* Full gate-to-gate trace from adsb.lol's tar1090 data — the same files its
+ * own site draws, so the trail runs from the departure gate rather than only
+ * the slice our own snapshots happened to record. The upstream sends no CORS
+ * headers, so it's reached through the same-origin /trace proxy (server.py
+ * locally, the Worker in production). Format: a base epoch `timestamp` plus
+ * entries [secOffset, lat, lon, alt_baro|"ground", gs, track, ...]; `full`
+ * covers the UTC day, `recent` the freshest minutes — merged and deduped. */
+const TRACE_ENDPOINTS = [
+  "/trace",
+  FLIGHT_PROXY_FALLBACK.replace(/\/flights$/, "/trace"),
+];
+const TRACE_MAX_POINTS = 1500;   // cap so a 12 h trace can't drown the renderer
+async function fetchFullTrace(hex) {
+  const icao = String(hex || "").toLowerCase().trim();
+  if (!/^~?[0-9a-f]{6}$/.test(icao)) return null;
+  for (const base of TRACE_ENDPOINTS) {
+    try {
+      const r = await fetch(`${base}?icao=${encodeURIComponent(icao)}`);
+      if (!r.ok) continue;
+      const j = await r.json();
+      const rows = [];
+      for (const part of [j.full, j.recent]) {
+        if (!part || !Array.isArray(part.trace)) continue;
+        const t0 = (part.timestamp || 0) * 1000;
+        for (const e of part.trace) {
+          if (!Array.isArray(e) || typeof e[1] !== "number" || typeof e[2] !== "number") continue;
+          rows.push({ t: t0 + e[0] * 1000, lat: e[1], lon: e[2],
+                      alt_ft: typeof e[3] === "number" ? e[3] : 0 });   // "ground" → surface
+        }
+      }
+      if (rows.length < 2) continue;
+      rows.sort((a, b) => a.t - b.t);
+      const out = [];
+      for (const p of rows)                     // recent overlaps full — dedupe by time
+        if (!out.length || p.t > out[out.length - 1].t + 400) out.push(p);
+      if (out.length <= TRACE_MAX_POINTS) return out;
+      const thin = [], step = (out.length - 1) / (TRACE_MAX_POINTS - 1);
+      for (let i = 0; i < TRACE_MAX_POINTS; i++) thin.push(out[Math.round(i * step)]);
+      return thin;
+    } catch (_) { /* proxy missing or offline — try the next endpoint */ }
+  }
+  return null;
+}
+
 async function showTrail(hex) {
   clearTrail();
   trailHex = hex;
-  let history = [];
-  try {
+  // The complete trace first; our own snapshot table only as the fallback.
+  let history = await fetchFullTrace(hex) || [];
+  if (trailHex !== hex) return;               // selection changed while loading
+  if (!history.length) try {
     const since = new Date(Date.now() - 3600 * 1000).toISOString();
     const { data, error } = await sb
       .from("flight_positions")
@@ -2289,10 +2335,11 @@ async function showTrail(hex) {
   if (trailHex !== hex) return; // selection changed while loading
 
   // Keep the raw fixes: the ribbon and the replay scrubber both need the
-  // timestamps that the Cartesian conversion below throws away.
+  // timestamps that the Cartesian conversion below throws away. Trace rows
+  // carry epoch ms in `t`; snapshot rows carry an ISO string in `ts`.
   trailHistory = history
     .filter((p) => typeof p.lat === "number" && typeof p.lon === "number")
-    .map((p) => ({ t: Date.parse(p.ts), lat: p.lat, lon: p.lon, altFt: p.alt_ft || 0 }))
+    .map((p) => ({ t: p.t != null ? p.t : Date.parse(p.ts), lat: p.lat, lon: p.lon, altFt: p.alt_ft || 0 }))
     .filter((p) => Number.isFinite(p.t));
 
   // Static segments for history, split at long gaps; the last segment
@@ -2300,7 +2347,7 @@ async function showTrail(hex) {
   let seg = [], alts = [];
   let prevTs = 0, prevLat = 0, prevLon = 0;
   for (const p of history) {
-    const t = Date.parse(p.ts);
+    const t = p.t != null ? p.t : Date.parse(p.ts);
     if (seg.length && (t - prevTs > TRAIL_GAP_MS ||
         gcKm(prevLat, prevLon, p.lat, p.lon) > TRAIL_JUMP_KM)) {
       if (seg.length > 1) trailPrimitives.push(makeTrailPrimitive(seg, alts));
@@ -2342,16 +2389,20 @@ function extendTrail(ac) {
 
   // Feed the same fix to the raw history the ribbon and scrubber read, so the
   // wall trails the aircraft instead of stopping where the stored history did.
-  // Bounded to the same ~1 h window the query asks for, so a long watch can't
-  // grow it without limit.
   trailHistory.push({
     t: Date.now(), lat: ac.lat, lon: ac.lon,
     altFt: typeof ac.alt_baro === "number" ? ac.alt_baro : 0
   });
-  const cutoff = Date.now() - 3600 * 1000;
+  // The full-day trace can legitimately reach back to this morning's
+  // departure gate, so bound by the UTC-day span the trace covers and by
+  // point count rather than the old one-hour window — the ribbon and the
+  // replay scrubber then keep the whole flight.
+  const cutoff = Date.now() - 26 * 3600 * 1000;
   let drop = 0;
   while (drop < trailHistory.length && trailHistory[drop].t < cutoff) drop++;
   if (drop) trailHistory.splice(0, drop);
+  const over = trailHistory.length - (TRACE_MAX_POINTS + 600);
+  if (over > 0) trailHistory.splice(0, over);
   rebuildRibbon();
 }
 
