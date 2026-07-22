@@ -5,5 +5,10 @@
   "compatibility_date": "2025-05-01",
   "assets": {
     "directory": "./dist"
-  }
+  },
+  // Pin the production domain so `wrangler deploy` re-asserts it and never
+  // drops the custom domain that was attached via the dashboard.
+  "routes": [
+    { "pattern": "aeronav3d.com", "custom_domain": true }
+  ]
 }
