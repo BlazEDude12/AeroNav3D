@@ -1265,6 +1265,66 @@
   }
   .wx-rose .wr-calm{fill:var(--muted);font-size:7px;text-anchor:middle;letter-spacing:.1em;}
   @media (max-width:640px){ .wx-card{top:auto;bottom:76px;right:12px;left:12px;width:auto;} }
+
+  /* ---------- Filters panel (altitude / type / airline) ---------- */
+  .filter-panel{
+    position:absolute;top:72px;right:20px;z-index:14;width:264px;
+    padding:13px 14px 12px;--glass-radius:14px;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transform:translateY(6px) scale(.98);
+    transition:opacity .2s ease,transform .2s cubic-bezier(.16,1,.3,1),visibility 0s linear .2s;
+  }
+  .filter-panel.open{
+    opacity:1;visibility:visible;pointer-events:auto;transform:none;
+    transition:opacity .2s ease,transform .2s cubic-bezier(.16,1,.3,1),visibility 0s;
+  }
+  @media (prefers-reduced-motion: reduce){ .filter-panel{transform:none;} }
+  .filter-head{
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:9.5px;font-weight:700;letter-spacing:.2em;color:var(--muted);
+    margin-bottom:11px;text-transform:uppercase;
+  }
+  .filter-head button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;}
+  .filter-head button:hover{color:var(--text);}
+  .filter-sec{margin-bottom:11px;}
+  .filter-sec h4{
+    font-size:9px;font-weight:700;letter-spacing:.18em;color:var(--muted);
+    text-transform:uppercase;margin:0 0 7px;
+  }
+  .filter-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{
+    font:inherit;font-size:11px;line-height:1;color:var(--muted);cursor:pointer;
+    padding:6px 10px;border-radius:999px;
+    background:rgba(255,255,255,.04);border:1px solid var(--border);
+    transition:color .15s,background .15s,border-color .15s;
+  }
+  .chip:hover{color:var(--text);border-color:rgba(120,160,220,.32);}
+  .chip[aria-pressed="true"]{
+    color:#04121e;font-weight:600;background:var(--accent);border-color:var(--accent);
+  }
+  .chip:focus-visible{outline:2px solid rgba(120,180,255,.7);outline-offset:2px;}
+  .filter-air{
+    display:none;align-items:center;gap:7px;font-size:11px;color:var(--text);
+    margin-bottom:11px;padding:6px 9px;border-radius:8px;
+    background:rgba(76,195,255,.10);border:1px solid rgba(76,195,255,.25);
+  }
+  .filter-air.show{display:flex;}
+  .filter-air span{color:var(--muted);font-size:9px;letter-spacing:.16em;text-transform:uppercase;}
+  .filter-air b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .filter-air button{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0 2px;}
+  .filter-foot{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    margin-top:2px;padding-top:10px;border-top:1px solid var(--border);
+    font-size:11px;color:var(--muted);
+  }
+  .filter-foot b{color:var(--text);font-weight:600;}
+  .filter-foot button{
+    font:inherit;font-size:11px;color:var(--muted);cursor:pointer;
+    background:none;border:1px solid var(--border);border-radius:999px;padding:5px 10px;
+    transition:color .15s,border-color .15s;
+  }
+  .filter-foot button:hover{color:var(--text);border-color:rgba(120,160,220,.32);}
+  @media (max-width:640px){ .filter-panel{top:auto;bottom:76px;right:12px;left:12px;width:auto;} }
 </style>
 </head>
 <body>
@@ -1345,6 +1405,13 @@
         <path d="M7.6 14.4l-.9 2M10.4 14.4l-.9 2M13.2 14.4l-.9 2"/>
       </svg>
     </button>
+    <button class="dens-toggle glass" id="filterToggle" aria-pressed="false" aria-expanded="false"
+            aria-label="Filter aircraft" title="Filter aircraft — altitude, type, airline">
+      <svg class="lb-ic" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.5 5h13M6 10h8M9 15h2"/>
+      </svg>
+    </button>
   </div>
 </div>
 <div class="search-results glass" id="searchResults"></div>
@@ -1357,6 +1424,30 @@
 
 <!-- Airport weather card (live METAR) -->
 <div class="wx-card glass" id="wxCard"></div>
+<div class="filter-panel glass" id="filterPanel" role="dialog" aria-label="Filter aircraft">
+  <div class="filter-head"><span>Filters</span><button id="filterClose" aria-label="Close filters">✕</button></div>
+  <div class="filter-air" id="filterAir"><span>Airline</span><b id="filterAirName"></b><button id="filterAirClear" aria-label="Clear airline filter">✕</button></div>
+  <div class="filter-sec">
+    <h4>Altitude</h4>
+    <div class="filter-chips" id="filterAlt">
+      <button class="chip" data-band="ground" aria-pressed="false">On ground</button>
+      <button class="chip" data-band="lo" aria-pressed="false">&lt; 10k ft</button>
+      <button class="chip" data-band="mid" aria-pressed="false">10–20k</button>
+      <button class="chip" data-band="hi" aria-pressed="false">20–30k</button>
+      <button class="chip" data-band="vhi" aria-pressed="false">30k+</button>
+    </div>
+  </div>
+  <div class="filter-sec">
+    <h4>Aircraft</h4>
+    <div class="filter-chips" id="filterType">
+      <button class="chip" data-type="jet" aria-pressed="false">Jet</button>
+      <button class="chip" data-type="heavy" aria-pressed="false">Heavy</button>
+      <button class="chip" data-type="prop" aria-pressed="false">Prop</button>
+      <button class="chip" data-type="heli" aria-pressed="false">Heli</button>
+    </div>
+  </div>
+  <div class="filter-foot"><span>Showing <b id="filterCount">—</b></span><button id="filterClear">Clear all</button></div>
+</div>
 
 <!-- Flight detail panel -->
 <div class="panel glass glass--liquid" id="flightPanel">
@@ -4250,6 +4341,7 @@ function updateGroundTraffic(selF) {
     flights.forEach((f, hex) => {
       if (hex === selectedHex || !f.data) return;
       if (f.data.alt_baro !== "ground" || typeof f.data.lat !== "number") return;
+      if (!passesFilters(f)) return;   // filtered-out planes get no ground model either
       const dkm = gcKm(lat, lon, f.data.lat, f.data.lon);
       if (dkm <= GROUND_RADIUS_KM) cands.push({ hex, f, dkm });
     });
@@ -6167,11 +6259,67 @@ searchClear.addEventListener("click", () => {
 });
 
 let airlineFilter = null; // { prefixes:Set<ICAO>, name }
+
+/* ---------- Combined aircraft filters (airline + altitude + type) ----------
+ * The filters panel adds altitude-band and aircraft-type dimensions on top of
+ * the airline filter. A plane shows only if it matches EVERY active dimension;
+ * an empty dimension imposes no constraint. applyAirlineFilter() stays the one
+ * writer of billboard.show, so the ground/3D-model code keeps handing ownership
+ * back to it. The selected plane always stays visible so filtering never yanks
+ * the detail panel out from under you. */
+const acFilters = { altBands: new Set(), types: new Set() };
+function altBandKey(alt) {
+  if (alt === "ground") return "ground";
+  if (typeof alt !== "number") return null;
+  if (alt < 10000) return "lo";
+  if (alt < 20000) return "mid";
+  if (alt < 30000) return "hi";
+  return "vhi";
+}
+function typeGroupKey(klass) {
+  if (klass === "heli") return "heli";
+  if (klass === "small") return "prop";
+  if (klass === "wide" || klass === "a380" || klass === "quad") return "heavy";
+  return "jet";
+}
+function passesFilters(f) {
+  const ac = f.data;
+  if (!ac) return true;
+  if (airlineFilter &&
+      !airlineFilter.prefixes.has(/^[A-Z]{3}/.exec((ac.flight || "").trim())?.[0])) return false;
+  if (acFilters.altBands.size) {
+    const b = altBandKey(ac.alt_baro);
+    if (!b || !acFilters.altBands.has(b)) return false;
+  }
+  if (acFilters.types.size && !acFilters.types.has(typeGroupKey(f.klass))) return false;
+  return true;
+}
+function filtersActive() {
+  return !!airlineFilter || acFilters.altBands.size > 0 || acFilters.types.size > 0;
+}
 function applyAirlineFilter() {
-  for (const f of flights.values()) {
-    const cs = (f.data.flight || "").trim();
-    f.billboard.show = !airlineFilter ||
-      airlineFilter.prefixes.has(/^[A-Z]{3}/.exec(cs)?.[0]);
+  let shown = 0;
+  for (const [hex, f] of flights) {
+    const ok = passesFilters(f);
+    if (ok) shown++;
+    f.billboard.show = ok || hex === selectedHex;
+  }
+  updateFilterUI(shown);
+}
+function updateFilterUI(shown) {
+  if (typeof shown !== "number") {
+    shown = 0;
+    for (const f of flights.values()) if (passesFilters(f)) shown++;
+  }
+  const active = filtersActive();
+  const countEl = document.getElementById("filterCount");
+  if (countEl) countEl.textContent = active ? `${shown} of ${flights.size}` : `all ${flights.size}`;
+  const toggle = document.getElementById("filterToggle");
+  if (toggle) toggle.setAttribute("aria-pressed", String(active));
+  const air = document.getElementById("filterAir");
+  if (air) {
+    air.classList.toggle("show", !!airlineFilter);
+    if (airlineFilter) document.getElementById("filterAirName").textContent = airlineFilter.name;
   }
 }
 function setAirlineFilter(prefixes, name) {
@@ -6186,6 +6334,41 @@ function clearAirlineFilter() {
   applyAirlineFilter();
 }
 searchChip.addEventListener("click", clearAirlineFilter);
+
+// Wire the filters panel: a top-bar toggle opens a glass dropdown of
+// multi-select chips; each click updates a filter set and re-applies.
+(function initFilterPanel() {
+  const panel = document.getElementById("filterPanel");
+  const toggle = document.getElementById("filterToggle");
+  if (!panel || !toggle) return;
+  const setOpen = (open) => {
+    panel.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+  toggle.addEventListener("click", () => setOpen(!panel.classList.contains("open")));
+  document.getElementById("filterClose").addEventListener("click", () => setOpen(false));
+  const wireChips = (containerId, set, attr) => {
+    for (const chip of document.getElementById(containerId).querySelectorAll(".chip")) {
+      chip.addEventListener("click", () => {
+        const key = chip.getAttribute(attr);
+        const on = !set.has(key);
+        on ? set.add(key) : set.delete(key);
+        chip.setAttribute("aria-pressed", String(on));
+        applyAirlineFilter();
+      });
+    }
+  };
+  wireChips("filterAlt", acFilters.altBands, "data-band");
+  wireChips("filterType", acFilters.types, "data-type");
+  document.getElementById("filterAirClear").addEventListener("click", () => clearAirlineFilter());
+  document.getElementById("filterClear").addEventListener("click", () => {
+    acFilters.altBands.clear();
+    acFilters.types.clear();
+    for (const chip of panel.querySelectorAll(".chip")) chip.setAttribute("aria-pressed", "false");
+    if (airlineFilter) clearAirlineFilter(); else applyAirlineFilter();
+  });
+  updateFilterUI();
+})();
 
 let routeEntity = null;
 function showRouteArc(a, b) {
