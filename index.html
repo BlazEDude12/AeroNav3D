@@ -1641,6 +1641,35 @@ scene.globe.dynamicAtmosphereLighting = true;
 scene.globe.vertexShadowDarkness = 1.0;
 viewer.clock.shouldAnimate = true;
 
+/* ---------------- Robust first paint (background-tab safe) ----------------
+ * Cesium drives its render loop with requestAnimationFrame, which browsers
+ * pause while a tab is backgrounded — a very common way people open links.
+ * We render continuously (requestRenderMode is off), so a hidden tab paints
+ * nothing and the globe never even requests its surface tiles until it is
+ * focused: the classic "blank globe until you touch it" bug. rAF is throttled
+ * while hidden, but a manual render() is not — so force real frames after the
+ * imagery layer resolves and the instant the page becomes visible, and keep
+ * nudging until the surface tiles are in. That way a tab opened in the
+ * background is already fully painted the moment the user switches to it. */
+function forceRepaint() {
+  try { viewer.resize(); viewer.render(); } catch (e) { /* pre-init / disposed */ }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) forceRepaint();
+});
+function kickFirstPaint() {
+  forceRepaint();
+  let elapsedMs = 0, paintedFrames = 0;
+  const stepMs = 500;
+  const id = setInterval(() => {
+    forceRepaint();
+    elapsedMs += stepMs;
+    if (viewer.scene.globe.tilesLoaded) paintedFrames++;
+    // Stop once the globe has stayed fully painted for a few frames, or 30s.
+    if (paintedFrames >= 3 || elapsedMs >= 30_000) clearInterval(id);
+  }, stepMs);
+}
+
 // NASA Black Marble (VIIRS) city lights, shown only on the night side of
 // the terminator via the layer's day/night alpha blending.
 let nightLayer = null;
@@ -1795,6 +1824,7 @@ function showNotice(html) {
   }
   addNightLights(); // added after the base layer so it renders on top
   hideLoader();
+  kickFirstPaint(); // paint now even if we're a backgrounded tab
 })();
 
 /* ---------------- Loader / hint ---------------- */
