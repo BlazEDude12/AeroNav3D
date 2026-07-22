@@ -228,6 +228,29 @@
     --glass-scrim:60,35,10;--glass-scrim-alpha:.85;--glass-radius:10px;
     color:#ffd9a0;display:none;
   }
+  /* ---------- Live feed connection status ----------
+     The feed fails over silently (Supabase -> Cloudflare Worker -> stale
+     cache); this tells the user which feed is live and how fresh it is, so
+     planes going quiet reads as "reconnecting", not "broken". */
+  .status{
+    position:absolute;left:14px;bottom:38px;z-index:10;
+    display:none;align-items:center;gap:8px;
+    padding:6px 11px;--glass-radius:999px;
+    font-size:11px;letter-spacing:.02em;color:var(--muted);
+    user-select:none;cursor:default;transition:opacity .4s;
+  }
+  .status.show{display:flex;}
+  .status .status-dot{
+    width:8px;height:8px;border-radius:50%;flex:none;
+    background:#7c8aa0;box-shadow:0 0 7px rgba(124,138,160,.6);
+  }
+  .status .status-text b{color:var(--text);font-weight:600;}
+  .status.live .status-dot{background:#43d17a;box-shadow:0 0 8px rgba(67,209,122,.75);}
+  .status.warn .status-dot{background:#ffb84d;box-shadow:0 0 8px rgba(255,184,77,.75);}
+  .status.err  .status-dot{background:#ff6b6b;box-shadow:0 0 8px rgba(255,107,107,.8);}
+  .status.live .status-dot{animation:stpulse 2.4s ease-in-out infinite;}
+  @keyframes stpulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  @media (prefers-reduced-motion: reduce){ .status.live .status-dot{animation:none;} }
   /* ---------- Flight detail panel ---------- */
   .panel{
     position:absolute;top:96px;left:16px;z-index:10;width:392px;
@@ -1328,6 +1351,9 @@
 
 <!-- Missing-key notice -->
 <div class="notice glass" id="notice"></div>
+<div class="status glass" id="status" role="status" aria-live="polite">
+  <span class="status-dot"></span><span class="status-text">Connecting…</span>
+</div>
 
 <!-- Airport weather card (live METAR) -->
 <div class="wx-card glass" id="wxCard"></div>
@@ -3159,6 +3185,53 @@ function useGlobalFeed() {
   return globalMode && Date.now() >= globalRetryAt;
 }
 
+/* ---------------- Live feed connection status ----------------
+ * The feed fails over silently (Supabase Edge Function -> Cloudflare Worker ->
+ * stale cache). Surface which feed is live and how fresh it is, so planes
+ * going quiet reads as "reconnecting", not "broken". The X-Cache header is
+ * read when the feed exposes it via CORS (Access-Control-Expose-Headers:
+ * X-Cache); until then the badge runs on the client-side signals it already
+ * has — success/failure, primary vs Cloudflare fallback, and time since the
+ * last good update. */
+const statusEl = document.getElementById("status");
+const statusText = statusEl.querySelector(".status-text");
+const feedStatus = { lastOkTs: 0, cache: null, onFallback: false, everOk: false, failing: false };
+function agoLabel(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.round(s / 60) + "m ago";
+  return Math.round(s / 3600) + "h ago";
+}
+function renderStatus() {
+  const f = feedStatus;
+  if (!f.everOk && !f.failing) { statusEl.className = "status glass"; return; }
+  const sinceOk = Date.now() - f.lastOkTs;
+  // "Stale" scales with the poll cadence of whichever feed we're on.
+  const staleAfter = (globalMode ? GLOBAL_POLL_MS : FLIGHT_POLL_MS) * 2.5;
+  let cls, label;
+  if (!f.everOk) { cls = "err"; label = "Connecting…"; }
+  else if (sinceOk > staleAfter) { cls = "err"; label = "Reconnecting"; }
+  else if (f.onFallback) { cls = "warn"; label = "Backup feed"; }
+  else if (f.cache === "stale") { cls = "warn"; label = "Cached"; }
+  else { cls = "live"; label = "Live"; }
+  statusEl.className = "status glass show " + cls;
+  statusText.innerHTML = label + (f.lastOkTs ? " · <b>" + agoLabel(sinceOk) + "</b>" : "");
+  statusEl.title =
+    (f.onFallback ? "Serving from the backup Cloudflare feed" : "Serving from the primary feed")
+    + (f.cache ? " · cache: " + f.cache : "")
+    + (globalMode && Date.now() < globalRetryAt ? " · global feed retrying, showing 250 nm" : "")
+    + (f.lastOkTs ? " · updated " + agoLabel(sinceOk) : "");
+}
+function markFeedOk() {
+  feedStatus.lastOkTs = Date.now();
+  feedStatus.onFallback = flightEndpoint !== FLIGHT_DATA_URL;
+  feedStatus.everOk = true;
+  feedStatus.failing = false;
+  renderStatus();
+}
+function markFeedFail() { feedStatus.failing = true; renderStatus(); }
+setInterval(renderStatus, 1000);
+
 // `retry` marks an internal re-poll after switching feed or endpoint: it
 // skips the throttle, which the first attempt already paid.
 async function pollFlights(retry) {
@@ -3177,6 +3250,7 @@ async function pollFlights(retry) {
       ? `${LOCAL_GLOBAL_URL || flightEndpoint}?global=1`
       : `${flightEndpoint}?circle=${lat},${lon},${FLIGHT_RADIUS_NM}`);
     if (!res.ok) throw new Error("HTTP " + res.status);
+    feedStatus.cache = res.headers.get("X-Cache"); // null cross-origin until the feed exposes it
     json = await res.json();
     if (json.error) throw new Error(json.error);
   } catch (err) {
@@ -3201,6 +3275,7 @@ async function pollFlights(retry) {
       console.warn("Flight data unavailable:", err.message);
       showNotice("<strong>Live flights unavailable.</strong><br>Retrying — the flight data sources may be busy.");
     }
+    markFeedFail();
     return;
   }
   if (flightsFailedOnce) {
@@ -3209,6 +3284,7 @@ async function pollFlights(retry) {
     flightsFailedOnce = false;
   }
   flightsEverLoaded = true;
+  markFeedOk();
 
   const now = Date.now();
   const seen = new Set();

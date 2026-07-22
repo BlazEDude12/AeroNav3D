@@ -62,6 +62,9 @@ const supabase = createClient(
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
+  // Let the browser read the cache-freshness header so the frontend's
+  // connection-status badge can show hit / miss / stale (needs a redeploy).
+  "Access-Control-Expose-Headers": "X-Cache",
 };
 
 function json(body: string, status = 200, extra: Record<string, string> = {}) {
