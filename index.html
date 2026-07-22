@@ -160,33 +160,6 @@
   .sr-item .badge{font-size:9px;letter-spacing:.15em;color:#39ff8e;flex:none;}
   .sr-empty{padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.5;}
 
-  /* ---------- Plane hover tooltip ---------- */
-  .plane-tip{
-    position:absolute;z-index:15;display:none;align-items:center;gap:7px;
-    padding:5px 10px;border-radius:9px;white-space:nowrap;pointer-events:none;
-    --glass-scrim-alpha:.92;--glass-radius:9px;
-    font-size:12.5px;font-weight:700;letter-spacing:.05em;
-    transform:translate(-50%,-135%);
-  }
-  .plane-tip img{width:18px;height:18px;border-radius:4px;background:#fff;
-    object-fit:contain;padding:1px;display:none;}
-
-  /* ---------- Nearby-traffic labels (FR24-style callsign + altitude) ---------- */
-  #nearbyLabels{position:absolute;inset:0;z-index:9;pointer-events:none;overflow:hidden;}
-  .nb-label{
-    position:absolute;display:none;align-items:center;gap:6px;
-    padding:3px 8px 3px 4px;border-radius:8px;white-space:nowrap;
-    transform:translate(-50%,-140%);will-change:left,top;
-    background:rgba(11,18,38,.72);border:1px solid rgba(140,160,190,.22);
-    box-shadow:0 2px 10px rgba(0,0,0,.4);backdrop-filter:blur(6px);
-    -webkit-backdrop-filter:blur(6px);
-  }
-  .nb-label img{width:20px;height:20px;border-radius:4px;background:#fff;
-    object-fit:contain;padding:1px;flex:0 0 auto;}
-  .nb-label .nb-txt{display:flex;flex-direction:column;line-height:1.15;}
-  .nb-label .nb-cs{font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#eaf1fb;}
-  .nb-label .nb-alt{font-size:10px;font-weight:600;letter-spacing:.02em;color:#9fb4d0;}
-
   /* ---------- Controls ---------- */
   .controls{
     position:absolute;right:20px;bottom:28px;z-index:10;
@@ -1278,15 +1251,6 @@
     <div class="tag" id="brandTag">Global Navigation</div>
   </div>
 </div>
-
-<!-- Plane hover tooltip -->
-<div class="plane-tip glass" id="planeTip">
-  <img id="planeTipLogo" alt="">
-  <span id="planeTipCs"></span>
-</div>
-
-<!-- Nearby-traffic labels (callsign + altitude + airline logo), FR24-style -->
-<div id="nearbyLabels"></div>
 
 <!-- Search + map-style toggle -->
 <div class="top-center">
@@ -3219,7 +3183,6 @@ async function pollFlights(retry) {
     flights.size ? `Global Navigation · ${flights.size} live` : "Global Navigation";
   // Rides the existing refresh — the density layer never polls for itself.
   if (densityOn) drawDensity();
-  rebuildNearbyTraffic();
   window.dispatchEvent(new Event("aeronav:poll"));
   if (selectedHex && flights.has(selectedHex)) updateFlightPanel(flights.get(selectedHex).data);
   if (mfPanel.classList.contains("open")) renderMyFlights();
@@ -3294,119 +3257,7 @@ scene.preRender.addEventListener(() => {
     ghostBb.height = ghostBb.width * Math.max(_rSquash, 0.42);
   }
   update3DModel();
-  updateNearbyLabels();
 });
-
-/* ----- Nearby traffic: trails + callsign/altitude/logo labels ----------
- * FR24's map paints a short coloured tail behind every aircraft near the
- * camera and floats a callsign + altitude tag (with the operator's logo)
- * above it. The fully selected plane already gets the rich history trail and
- * detail panel, so this covers everyone *else* in view: the traffic around
- * the aircraft you're following. Trails are real Cesium polylines coloured by
- * altitude; labels are DOM overlays (the airline logos come from a CDN with
- * no CORS headers, so they can't be WebGL textures — a positioned <img>
- * shows them without tainting anything). Both are capped and range-gated so
- * the feature only lights up once you've zoomed into an area. */
-const NEARBY_MAX = 10;               // most nearby labels drawn at once
-const NEARBY_RANGE_M = 90000;        // camera-to-plane cutoff (~zoomed-in only)
-const NEARBY_LABEL_STEP = 3;         // reposition labels every Nth frame
-
-const nearbyLabelsEl = document.getElementById("nearbyLabels");
-const nearbyLabelPool = [];          // reusable DOM tags
-let nearbySet = [];                  // [{ hex, f }] chosen at the last poll
-let _nbFrame = 0;
-const _nbCam = new Cesium.Cartesian3();
-const _nbWin = new Cesium.Cartesian2();
-
-function nearbyLabelEl(i) {
-  let el = nearbyLabelPool[i];
-  if (el) return el;
-  el = document.createElement("div");
-  el.className = "nb-label";
-  const img = document.createElement("img");
-  img.alt = "";
-  img.addEventListener("error", () => { img.style.display = "none"; });
-  const txt = document.createElement("div");
-  txt.className = "nb-txt";
-  const cs = document.createElement("span"); cs.className = "nb-cs";
-  const alt = document.createElement("span"); alt.className = "nb-alt";
-  txt.append(cs, alt);
-  el.append(img, txt);
-  el._img = img; el._cs = cs; el._alt = alt;
-  nearbyLabelsEl.appendChild(el);
-  nearbyLabelPool[i] = el;
-  return el;
-}
-
-function fmtAltFt(ac) {
-  if (!ac || ac.alt_baro === "ground") return "GROUND";
-  const ft = typeof ac.alt_baro === "number" ? ac.alt_baro : null;
-  return ft == null ? "—" : ft.toLocaleString("en-US") + " ft";
-}
-
-// Rebuild the chosen set of nearby aircraft. The trail belongs to the tracked
-// aircraft alone — only its selection draws a path — so this now feeds the
-// callsign/altitude labels only, no per-plane trails.
-function rebuildNearbyTraffic() {
-  nearbySet = [];
-  if (!flights.size) { updateNearbyLabels(); return; }
-  Cesium.Cartesian3.clone(viewer.camera.positionWC, _nbCam);
-  const cands = [];
-  flights.forEach((f, hex) => {
-    if (hex === selectedHex) return;                 // the selected plane owns the trail
-    if (!f.data || typeof f.data.lat !== "number") return;
-    if (!f.billboard || f.billboard.show === false) return;
-    const d = Cesium.Cartesian3.distance(_nbCam, f.billboard.position);
-    if (d > NEARBY_RANGE_M) return;
-    cands.push({ hex, f, d });
-  });
-  cands.sort((a, b) => a.d - b.d);
-  nearbySet = cands.slice(0, NEARBY_MAX);
-  updateNearbyLabels();
-}
-
-// Reposition the labels over their aircraft. Cheap enough (≤10 tags) to run
-// every few frames so they track the smooth between-poll motion.
-function updateNearbyLabels() {
-  if (++_nbFrame % NEARBY_LABEL_STEP) return;
-  const worldToWin = Cesium.SceneTransforms.worldToWindowCoordinates
-    || Cesium.SceneTransforms.wgs84ToWindowCoordinates;
-  const n = Math.max(nearbySet.length, nearbyLabelPool.length);
-  for (let i = 0; i < n; i++) {
-    const entry = nearbySet[i];
-    // Drop the tag if the aircraft left the feed, or became the selected plane
-    // between polls (it then owns the detail panel and rich trail instead).
-    if (!entry || entry.hex === selectedHex || !flights.has(entry.hex)) {
-      if (nearbyLabelPool[i]) nearbyLabelPool[i].style.display = "none";
-      continue;
-    }
-    const el = nearbyLabelEl(i);
-    const f = entry.f;
-    const win = worldToWin.call(Cesium.SceneTransforms, scene, f.billboard.position, _nbWin);
-    // Skip when the aircraft is behind the camera or off-screen.
-    if (!win || win.x < -60 || win.y < -40 ||
-        win.x > scene.canvas.clientWidth + 60 || win.y > scene.canvas.clientHeight + 40) {
-      el.style.display = "none"; continue;
-    }
-    const cs = (f.data.flight || "").trim() || entry.hex.toUpperCase();
-    if (el._csText !== cs) {
-      el._csText = cs;
-      el._cs.textContent = cs;
-      const al = airlineFor(cs);
-      if (al) {
-        el._img.src = `https://www.gstatic.com/flights/airline_logos/70px/${al[0]}.png`;
-        el._img.style.display = "block";
-      } else {
-        el._img.style.display = "none";
-        el._img.removeAttribute("src");
-      }
-    }
-    el._alt.textContent = fmtAltFt(f.data);
-    el.style.left = win.x + "px";
-    el.style.top = win.y + "px";
-    el.style.display = "flex";
-  }
-}
 
 /* ----- 3D aircraft on selection (FR24-style) --------------------------
  * The selected plane swaps its flat glyph for a real 3D model when the
@@ -5851,41 +5702,10 @@ pickHandler.setInputAction((evt) => {
   }
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-/* Hover tooltip: callsign + airline logo above the plane, FR24-style */
-const planeTip = document.getElementById("planeTip");
-const planeTipLogo = document.getElementById("planeTipLogo");
-const planeTipCs = document.getElementById("planeTipCs");
-planeTipLogo.addEventListener("error", () => { planeTipLogo.style.display = "none"; });
-let tipHex = null;
+/* Cursor feedback: pointer when hovering a plane (no callout card) */
 pickHandler.setInputAction((evt) => {
   const id = pickPlaneId(evt.endPosition);
-  if (id) {
-    const hex = id.slice(6);
-    const f = flights.get(hex);
-    if (f) {
-      if (tipHex !== hex) { // only rebuild content when the plane changes
-        tipHex = hex;
-        const cs = (f.data.flight || "").trim() || hex.toUpperCase();
-        planeTipCs.textContent = cs;
-        const al = airlineFor(cs);
-        if (al) {
-          planeTipLogo.src = `https://www.gstatic.com/flights/airline_logos/70px/${al[0]}.png`;
-          planeTipLogo.style.display = "block";
-        } else {
-          planeTipLogo.style.display = "none";
-          planeTipLogo.removeAttribute("src");
-        }
-      }
-      planeTip.style.left = evt.endPosition.x + "px";
-      planeTip.style.top = evt.endPosition.y + "px";
-      planeTip.style.display = "flex";
-      scene.canvas.style.cursor = "pointer";
-      return;
-    }
-  }
-  tipHex = null;
-  planeTip.style.display = "none";
-  scene.canvas.style.cursor = "";
+  scene.canvas.style.cursor = id && flights.has(id.slice(6)) ? "pointer" : "";
 }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
 /* ----- Map style toggle: hybrid (labels) vs pure satellite ----- */
