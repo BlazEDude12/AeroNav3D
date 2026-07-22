@@ -544,6 +544,22 @@
   body.scrubbing .panel{max-height:calc(100vh - 210px);}
 
   .scrub-main{display:flex;align-items:center;gap:16px;}
+  /* Auto-play control: sweeps the recorded window on its own (▶ / ⏸). */
+  .scrub-play{
+    flex:none;width:34px;height:34px;border-radius:50%;padding:0;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    border:1px solid rgba(var(--glass-tint),.18);
+    background:rgba(var(--glass-tint),.06);color:var(--text);
+    transition:color .18s,background .18s,border-color .18s;
+  }
+  .scrub-play[hidden]{display:none;}
+  .scrub-play:hover{background:rgba(var(--glass-tint),.14);border-color:rgba(76,195,255,.4);}
+  .scrub-play:focus-visible{outline:2px solid rgba(120,180,255,.75);outline-offset:2px;}
+  .scrub-play svg{width:15px;height:15px;fill:currentColor;display:block;}
+  .scrub-play .ic-pause{display:none;}
+  .scrub-play.playing{color:var(--accent);border-color:rgba(76,195,255,.4);}
+  .scrub-play.playing .ic-play{display:none;}
+  .scrub-play.playing .ic-pause{display:block;}
   /* Departure / arrival codes anchoring each end of the journey */
   .scrub-ap{flex:none;min-width:42px;text-align:center;}
   .scrub-ap.alt{text-align:center;}
@@ -1559,6 +1575,12 @@
      plane, and drag-to-replay over the recorded portion. -->
 <div class="scrub glass" id="scrub">
   <div class="scrub-main">
+    <button class="scrub-play" id="scrubPlay" hidden aria-label="Play replay" title="Play recorded flight">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="ic-play" d="M8 5v14l11-7z"/>
+        <path class="ic-pause" d="M7 5h3v14H7zm7 0h3v14h-3z"/>
+      </svg>
+    </button>
     <div class="scrub-ap" id="scrubDepAp"><b id="scrubDep">—</b></div>
     <div class="scrub-track" id="scrubTrack">
       <div class="scrub-rail"></div>
@@ -5541,7 +5563,9 @@ const scrubElapsedLbl = document.getElementById("scrubElapsedLbl");
 const scrubRemainBox = document.getElementById("scrubRemainBox");
 const scrubLiveBtn = document.getElementById("scrubLive");
 const scrubPreview = document.getElementById("scrubPreview");
+const scrubPlayBtn = document.getElementById("scrubPlay");
 let scrubActive = false;      // true = panel shows a past fix or a future preview
+let scrubPlayFrac = 1;        // last replayed fraction of the recorded span (for resume)
 let scrubAc = null;           // synthetic ac at the scrubbed instant
 let ghostBillboards = null;   // created on first replay, reused after
 let ghostBb = null;
@@ -5684,6 +5708,7 @@ function clearPreviewTrail() {
 }
 
 function clearScrub() {
+  pauseReplay();
   scrubActive = false;
   scrubAc = null;
   hideGhost();
@@ -5700,11 +5725,14 @@ function syncScrubber() {
   const hasRoute = !!routeBarInfo();
   if (!featureOn("timelineScrubber") || !selectedHex || (!hasRoute && !scrubSpan())) {
     if (scrubActive) exitReplay();
+    pauseReplay();
+    scrubPlayBtn.hidden = true;
     scrubEl.classList.remove("open");
     document.body.classList.remove("scrubbing");
     return;
   }
   scrubEl.classList.add("open");
+  updatePlayBtn();
   document.body.classList.add("scrubbing");              // shortens the panel to clear the bar
   const hint = document.getElementById("hint");
   if (hint) hint.style.opacity = "0";                    // same corner; the tip has had its turn
@@ -5777,6 +5805,7 @@ function updateLegacyBar() {
 }
 
 function exitReplay() {
+  if (isReplaying()) pauseReplay();
   if (!scrubActive) return;
   scrubActive = false;
   scrubAc = null;
@@ -5872,6 +5901,7 @@ function applyScrub(spanFrac, info) {
   const span = scrubSpan();
   if (!span || !selectedHex) return;
   const clamped = Math.min(Math.max(spanFrac, 0), 1);
+  scrubPlayFrac = clamped;                    // remember position for play/pause resume
   const t = span.t0 + (span.t1 - span.t0) * clamped;
   const fix = scrubFixAt(t);
   if (!fix) return;
@@ -5911,6 +5941,50 @@ function applyScrub(spanFrac, info) {
   updateFlightPanel(scrubAc);
 }
 
+/* ----- Auto-play: sweep the recorded window on its own (the drag scrubber
+ * above only moves when you do). Play advances a fraction across the recorded
+ * span at a fixed ~14 s pace and drives the same applyScrub() the drag uses, so
+ * position, altitude, speed and the panel readouts all replay together. ----- */
+const REPLAY_SWEEP_MS = 14000;   // wall-clock to replay the whole recorded window
+let playRaf = null;
+function isReplaying() { return playRaf != null; }
+function setPlayIcon(on) {
+  scrubPlayBtn.classList.toggle("playing", on);
+  scrubPlayBtn.setAttribute("aria-label", on ? "Pause replay" : "Play replay");
+  scrubPlayBtn.title = on ? "Pause" : "Play recorded flight";
+}
+function pauseReplay() {
+  if (playRaf != null) { cancelAnimationFrame(playRaf); playRaf = null; }
+  setPlayIcon(false);
+}
+function playReplay() {
+  const span = scrubSpan();
+  if (!span) return;
+  const previewing = scrubEl.classList.contains("preview");
+  let from = (scrubActive && !previewing) ? scrubPlayFrac : 0;
+  if (from >= 0.999) from = 0;               // at the end / live: restart from the oldest fix
+  const t0 = Date.now();
+  setPlayIcon(true);
+  const tick = () => {
+    const frac = from + (Date.now() - t0) / REPLAY_SWEEP_MS;
+    if (frac >= 1) {
+      applyScrub(1, routeBarInfo());
+      pauseReplay();
+      exitReplay();                          // caught up to the present — hand back to live
+      return;
+    }
+    applyScrub(frac, routeBarInfo());
+    playRaf = requestAnimationFrame(tick);
+  };
+  playRaf = requestAnimationFrame(tick);
+}
+function toggleReplay() { isReplaying() ? pauseReplay() : playReplay(); }
+function updatePlayBtn() {
+  const can = !!scrubSpan();
+  scrubPlayBtn.hidden = !can;
+  if (!can && isReplaying()) pauseReplay();
+}
+
 function scrubFracFromX(clientX) {
   const r = scrubTrack.getBoundingClientRect();
   if (!r.width) return 1;
@@ -5931,6 +6005,7 @@ if (featureOn("timelineScrubber")) {
   const canScrub = () => !!scrubSpan() || !!routeBarInfo();
   const onDown = (e) => {
     if (!canScrub()) return;
+    pauseReplay();                       // grabbing the track takes over from auto-play
     dragging = true;
     scrubTrack.setPointerCapture?.(e.pointerId);
     scrubTo(scrubFracFromX(e.clientX));
@@ -5945,6 +6020,7 @@ if (featureOn("timelineScrubber")) {
   // Keyboard: the handle is a real slider.
   scrubHandle.addEventListener("keydown", (e) => safe("timelineScrubber", () => {
     if (!canScrub()) return;
+    pauseReplay();                       // manual keys take over from auto-play
     const now = parseFloat(scrubHandle.getAttribute("aria-valuenow")) / 100;
     const stepK = e.shiftKey ? 0.1 : 0.02;
     if (e.key === "ArrowLeft") { e.preventDefault(); scrubTo(now - stepK); }
@@ -5954,6 +6030,7 @@ if (featureOn("timelineScrubber")) {
   }));
 
   document.getElementById("scrubLive").addEventListener("click", () => exitReplay());
+  scrubPlayBtn.addEventListener("click", () => safe("timelineScrubber", () => toggleReplay()));
 }
 
 function setSelectedColor(hex, selected) {
