@@ -1159,9 +1159,12 @@
     :root{--glass-scrim-alpha:.94;}
   }
 
-  /* Below 900px the centred bar would collide with the brand badge and
-     My Flights — drop it to its own row instead. */
-  @media (max-width:900px){
+  /* The centred search cluster (~670px) is anchored to the viewport middle, so
+     as the window narrows its left edge marches toward the fixed brand lockup
+     and collides with it — clipping the "GLOBAL NAVIGATION" tagline — from
+     roughly 1130px down. Drop the bar to its own full-width row before that
+     happens; laptops at 1280px+ keep the centred layout. */
+  @media (max-width:1150px){
     .top-center{top:64px;left:12px;right:12px;transform:none;height:40px;}
     .search{flex:1;width:auto;}
     .map-toggle{width:150px;}
