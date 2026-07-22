@@ -1343,6 +1343,46 @@
   }
   .filter-foot button:hover{color:var(--text);border-color:rgba(120,160,220,.32);}
   @media (max-width:640px){ .filter-panel{top:auto;bottom:76px;right:12px;left:12px;width:auto;} }
+
+  /* ---------- Side-by-side flight comparison ---------- */
+  .cmp{
+    position:absolute;top:50%;left:50%;z-index:16;
+    width:min(560px,calc(100vw - 32px));
+    padding:16px 18px 15px;--glass-radius:16px;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transform:translate(-50%,-50%) scale(.97);
+    transition:opacity .2s ease,transform .2s cubic-bezier(.16,1,.3,1),visibility 0s linear .2s;
+  }
+  .cmp.open{
+    opacity:1;visibility:visible;pointer-events:auto;transform:translate(-50%,-50%) scale(1);
+    transition:opacity .2s ease,transform .2s cubic-bezier(.16,1,.3,1),visibility 0s;
+  }
+  @media (prefers-reduced-motion: reduce){ .cmp{transform:translate(-50%,-50%);} }
+  .cmp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;}
+  .cmp-head h3{font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0;}
+  .cmp-head button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;}
+  .cmp-head button:hover{color:var(--text);}
+  .cmp-cols{display:flex;gap:16px;margin-bottom:12px;}
+  .cmp-col{flex:1;min-width:0;}
+  .cmp-cs{display:flex;align-items:center;gap:7px;font-size:15px;font-weight:700;color:var(--text);}
+  .cmp-cs span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cmp-dot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .cmp-col.a .cmp-dot{background:var(--accent);box-shadow:0 0 8px rgba(76,195,255,.7);}
+  .cmp-col.b .cmp-dot{background:#ffb057;box-shadow:0 0 8px rgba(255,176,87,.7);}
+  .cmp-meta{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.65;}
+  .cmp-meta b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;}
+  .cmp-chart{width:100%;height:152px;display:block;margin-top:2px;}
+  .cmp-chart .grid{stroke:rgba(255,255,255,.07);stroke-width:1;}
+  .cmp-chart .axis{stroke:rgba(255,255,255,.16);stroke-width:1;}
+  .cmp-chart .lbl{fill:var(--muted);font-size:9px;font-family:system-ui,sans-serif;}
+  .cmp-chart .line-a{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;}
+  .cmp-chart .line-b{fill:none;stroke:#ffb057;stroke-width:2;stroke-linejoin:round;stroke-linecap:round;}
+  .cmp-chart .empty{fill:var(--muted);font-size:11px;font-family:system-ui,sans-serif;}
+  .cmp-cap{margin-top:9px;font-size:10px;color:var(--muted);letter-spacing:.04em;text-align:center;}
+  /* Compare-arming: the panel button pulses and the cursor invites a click. */
+  #fpCompare.arming{color:var(--accent);}
+  body.comparing #globe{cursor:crosshair;}
+  @media (max-width:560px){ .cmp-chart{height:124px;} .cmp-cs{font-size:13.5px;} }
 </style>
 </head>
 <body>
@@ -1466,6 +1506,15 @@
   </div>
   <div class="filter-foot"><span>Showing <b id="filterCount">—</b></span><button id="filterClear">Clear all</button></div>
 </div>
+<div class="cmp glass" id="cmp" role="dialog" aria-modal="true" aria-label="Compare flights">
+  <div class="cmp-head"><h3>Compare flights</h3><button id="cmpClose" aria-label="Close comparison">✕</button></div>
+  <div class="cmp-cols">
+    <div class="cmp-col a"><div class="cmp-cs"><i class="cmp-dot"></i><span id="cmpCsA">—</span></div><div class="cmp-meta" id="cmpMetaA"></div></div>
+    <div class="cmp-col b"><div class="cmp-cs"><i class="cmp-dot"></i><span id="cmpCsB">—</span></div><div class="cmp-meta" id="cmpMetaB"></div></div>
+  </div>
+  <div id="cmpChart"></div>
+  <div class="cmp-cap">Altitude over the last hour of recorded track</div>
+</div>
 
 <!-- Flight detail panel -->
 <div class="panel glass glass--liquid" id="flightPanel">
@@ -1482,6 +1531,11 @@
       <button id="fp3d" aria-label="3D chase view" aria-pressed="false" title="3D chase view">3D</button>
       <button id="fpExpand" aria-label="Expand aircraft details" aria-expanded="false" title="Expand details">⤢</button>
       <button id="fpStar" aria-label="Save to My Flights" title="Save to My Flights">☆</button>
+      <button id="fpCompare" aria-label="Compare with another flight" title="Compare with another flight">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 8h11l-3-3M17 16H6l3 3"/>
+        </svg>
+      </button>
       <button id="fpShare" aria-label="Copy link to this flight" title="Copy link to this flight">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1 1"/>
@@ -6052,6 +6106,7 @@ function setSelectedColor(hex, selected) {
   if (f) f.billboard.color = selected ? PLANE_SELECTED : ICONS[f.klass].color;
 }
 function closeFlightPanel() {
+  disarmCompare();
   if (view3d) exitView3d();
   if (selectedHex) setSelectedColor(selectedHex, false);
   selectedHex = null;
@@ -6214,6 +6269,10 @@ function updatePlaneTips() {
 const pickHandler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
 pickHandler.setInputAction((evt) => {
   const id = pickPlaneId(evt.position);
+  if (compareArmed) {                     // compare mode: this click picks flight B
+    if (id) setCompareB(id.slice(6)); else disarmCompare();
+    return;
+  }
   if (id) {
     const hex = id.slice(6);
     // On-ground aircraft pin their callout on click (again to unpin); the
@@ -6812,6 +6871,119 @@ async function openFlightParam() {
     });
   } catch (_) { /* lookup failed — leave the globe as-is */ }
 }
+
+/* ---------- Side-by-side flight comparison ----------
+ * "Compare" arms a pick: the next aircraft you click becomes flight B, and a
+ * card overlays both flights' altitude over their last hour of recorded track
+ * (the same flight_positions history the trails use) plus current stats. */
+const cmpEl = document.getElementById("cmp");
+const fpCompareBtn = document.getElementById("fpCompare");
+let compareArmed = false;
+let cmpToken = 0;
+let _cmpHintSaved = null;
+
+function showCompareHint(on) {
+  const hint = document.getElementById("hint");
+  if (!hint) return;
+  if (on) {
+    if (_cmpHintSaved === null) _cmpHintSaved = hint.innerHTML;
+    hint.innerHTML = "Click another aircraft to compare &nbsp;·&nbsp; Esc to cancel";
+    hint.style.opacity = "1";
+  } else if (_cmpHintSaved !== null) {
+    hint.innerHTML = _cmpHintSaved; _cmpHintSaved = null; hint.style.opacity = "0";
+  }
+}
+function armCompare() {
+  if (!selectedHex) return;
+  compareArmed = true;
+  fpCompareBtn.classList.add("arming");
+  document.body.classList.add("comparing");
+  showCompareHint(true);
+}
+function disarmCompare() {
+  if (!compareArmed) return;
+  compareArmed = false;
+  fpCompareBtn.classList.remove("arming");
+  document.body.classList.remove("comparing");
+  showCompareHint(false);
+}
+function setCompareB(hexB) {
+  disarmCompare();
+  if (!selectedHex || hexB === selectedHex) return;   // need two different aircraft
+  openComparison(selectedHex, hexB);
+}
+function closeComparison() { cmpEl.classList.remove("open"); }
+
+async function fetchFlightHistory(hex) {
+  try {
+    const since = new Date(Date.now() - 3600 * 1000).toISOString();
+    const { data, error } = await sb.from("flight_positions")
+      .select("ts,alt_ft").eq("hex", hex).gte("ts", since).order("ts");
+    if (error) throw error;
+    return (data || [])
+      .map((p) => ({ t: Date.parse(p.ts), alt: typeof p.alt_ft === "number" ? p.alt_ft : 0 }))
+      .filter((p) => Number.isFinite(p.t));
+  } catch (_) { return []; }
+}
+function cmpFlightMeta(hex) {
+  const f = flights.get(hex);
+  if (!f || !f.data) return { cs: hex.toUpperCase(), html: "—" };
+  const ac = f.data;
+  const cs = (ac.flight || "").trim() || ac.r || hex.toUpperCase();
+  const alt = ac.alt_baro === "ground" ? "On ground"
+    : typeof ac.alt_baro === "number" ? Math.round(ac.alt_baro).toLocaleString() + " ft" : "—";
+  const spd = typeof ac.gs === "number" ? Math.round(ac.gs) + " kt" : "—";
+  const airline = airlineFor((ac.flight || "").trim());
+  const sub = [(ac.t || "").trim(), airline && airline[1]].filter(Boolean).join(" · ") || (ac.r || "");
+  return { cs, html: `${sub ? sub + "<br>" : ""}Altitude <b>${alt}</b><br>Speed <b>${spd}</b>` };
+}
+function buildAltChart(a, b) {
+  const W = 520, H = 152, padL = 46, padR = 12, padT = 12, padB = 20;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  if (a.length < 2 && b.length < 2) {
+    return `<svg class="cmp-chart" viewBox="0 0 ${W} ${H}"><text class="empty" x="${W / 2}" y="${H / 2}" text-anchor="middle">Not enough recorded altitude history yet.</text></svg>`;
+  }
+  const all = a.concat(b);
+  let tMin = Infinity, tMax = -Infinity, aMax = 0;
+  for (const p of all) { if (p.t < tMin) tMin = p.t; if (p.t > tMax) tMax = p.t; if (p.alt > aMax) aMax = p.alt; }
+  aMax = Math.max(Math.ceil(aMax / 5000) * 5000, 5000);
+  const tSpan = Math.max(tMax - tMin, 1);
+  const X = (t) => padL + (t - tMin) / tSpan * plotW;
+  const Y = (alt) => padT + (1 - Math.max(alt, 0) / aMax) * plotH;
+  const path = (arr) => "M" + arr.map((p) => X(p.t).toFixed(1) + " " + Y(p.alt).toFixed(1)).join(" L");
+  let grid = "";
+  for (let i = 0; i <= 2; i++) {
+    const alt = aMax * i / 2, y = Y(alt).toFixed(1);
+    grid += `<line class="grid" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+    grid += `<text class="lbl" x="${padL - 6}" y="${(+y + 3).toFixed(1)}" text-anchor="end">${Math.round(alt / 1000)}k</text>`;
+  }
+  const spanMin = Math.round(tSpan / 60000);
+  const xlabels = `<text class="lbl" x="${padL}" y="${H - 6}">${spanMin}m ago</text><text class="lbl" x="${W - padR}" y="${H - 6}" text-anchor="end">now</text>`;
+  const lineA = a.length >= 2 ? `<path class="line-a" d="${path(a)}"/>` : "";
+  const lineB = b.length >= 2 ? `<path class="line-b" d="${path(b)}"/>` : "";
+  return `<svg class="cmp-chart" viewBox="0 0 ${W} ${H}">${grid}<line class="axis" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}"/>${xlabels}${lineA}${lineB}</svg>`;
+}
+async function openComparison(hexA, hexB) {
+  const token = ++cmpToken;
+  const metaA = cmpFlightMeta(hexA), metaB = cmpFlightMeta(hexB);
+  document.getElementById("cmpCsA").textContent = metaA.cs;
+  document.getElementById("cmpCsB").textContent = metaB.cs;
+  document.getElementById("cmpMetaA").innerHTML = metaA.html;
+  document.getElementById("cmpMetaB").innerHTML = metaB.html;
+  document.getElementById("cmpChart").innerHTML =
+    `<svg class="cmp-chart" viewBox="0 0 520 152"><text class="empty" x="260" y="76" text-anchor="middle">Loading recorded history…</text></svg>`;
+  cmpEl.classList.add("open");
+  const [a, b] = await Promise.all([fetchFlightHistory(hexA), fetchFlightHistory(hexB)]);
+  if (token !== cmpToken || !cmpEl.classList.contains("open")) return;   // superseded
+  document.getElementById("cmpChart").innerHTML = buildAltChart(a, b);
+}
+fpCompareBtn.addEventListener("click", () => (compareArmed ? disarmCompare() : armCompare()));
+document.getElementById("cmpClose").addEventListener("click", closeComparison);
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (compareArmed) disarmCompare();
+  else if (cmpEl.classList.contains("open")) closeComparison();
+});
 
 /* Worldwide flight lookup (exact callsign or registration) via the
    airplanes.live public API, so search isn't limited to the local feed
