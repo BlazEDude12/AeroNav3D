@@ -3590,6 +3590,12 @@ function flightAltitudeMeters(ac) {
   return typeof ac.alt_baro === "number" ? aglBlendMeters(ac.alt_baro, ac._surfFt) : 0;
 }
 
+/* Camera height for flying to a flight: close enough that a plane on the ground
+ * or on approach fills the view, scaling up for aircraft at cruise. */
+function flightViewHeight(ac) {
+  return Math.max(flightAltitudeMeters(ac) * 2, 2500);
+}
+
 // Initial bearing (degrees) from point 1 to point 2
 function bearingDeg(lat1, lon1, lat2, lon2) {
   const r = Math.PI / 180;
@@ -7011,7 +7017,7 @@ function runSearchAction(el) {
       selectFlight(el.dataset.hex);
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(
-          f.data.lon, f.data.lat, Math.max(flightAltitudeMeters(f.data) * 2, 150000)),
+          f.data.lon, f.data.lat, flightViewHeight(f.data)),
         duration: 1.6
       });
     }
@@ -7021,7 +7027,7 @@ function runSearchAction(el) {
       const hex = el.dataset.hex;
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(
-          ac.lon, ac.lat, Math.max(flightAltitudeMeters(ac) * 2, 200000)),
+          ac.lon, ac.lat, flightViewHeight(ac)),
         duration: 2.2,
         complete: () => {
           pollFlights(); // fetch the new area, then select once the plane arrives
@@ -7103,7 +7109,7 @@ function flyToSelected(hex) {
   if (!f || !f.data || typeof f.data.lon !== "number") return;
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
-      f.data.lon, f.data.lat, Math.max(flightAltitudeMeters(f.data) * 2, 150000)),
+      f.data.lon, f.data.lat, flightViewHeight(f.data)),
     duration: 1.6
   });
 }
@@ -7138,7 +7144,7 @@ async function openFlightParam() {
     if (!ac || typeof ac.lat !== "number" || selectedHex) return;
     globalHits.set(ac.hex, ac);
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, Math.max(flightAltitudeMeters(ac) * 2, 200000)),
+      destination: Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, flightViewHeight(ac)),
       duration: 2.2,
       complete: () => {
         pollFlights();
@@ -7548,7 +7554,7 @@ function flyToFavorite(hex) {
   if (!f || !f.data) return;
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
-      f.data.lon, f.data.lat, flightAltitudeMeters(f.data) + 150_000),
+      f.data.lon, f.data.lat, flightViewHeight(f.data)),
     duration: 1.8
   });
 }
