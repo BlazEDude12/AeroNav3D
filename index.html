@@ -295,13 +295,16 @@
       transform .35s cubic-bezier(.16,1,.3,1),
       visibility 0s;
   }
-  .panel-head{display:flex;justify-content:space-between;align-items:flex-start;
-    padding:12px 14px 10px;border-bottom:1px solid var(--border);}
+  /* Wraps so the subtitle (airline · reg · type) drops to its own full-width
+     row instead of competing with the action buttons for horizontal space. */
+  .panel-head{display:flex;flex-wrap:wrap;justify-content:space-between;
+    align-items:center;padding:12px 14px 10px;border-bottom:1px solid var(--border);}
   .panel-callsign{font-size:24px;font-weight:700;letter-spacing:.05em;}
-  .panel-ident{display:flex;align-items:center;gap:12px;}
+  .panel-ident{display:flex;align-items:center;gap:12px;min-width:0;}
   .panel-logo{width:42px;height:42px;border-radius:8px;background:#fff;
     object-fit:contain;padding:3px;display:none;}
-  .panel-sub{font-size:14px;color:var(--muted);margin-top:3px;}
+  .panel-sub{flex:0 0 100%;min-width:0;font-size:13px;color:var(--muted);margin-top:5px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .panel-head button{background:none;border:none;color:var(--muted);
     font-size:14px;cursor:pointer;padding:2px 4px;line-height:1;}
   .panel-head button:hover{color:var(--text);}
@@ -1565,10 +1568,7 @@
   <div class="panel-head">
     <div class="panel-ident">
       <img class="panel-logo" id="fpLogo" alt="">
-      <div>
-        <div class="panel-callsign" id="fpCallsign">—</div>
-        <div class="panel-sub" id="fpSub">—</div>
-      </div>
+      <div class="panel-callsign" id="fpCallsign">—</div>
     </div>
     <div class="actions">
       <button id="fp3d" aria-label="3D chase view" aria-pressed="false" title="3D chase view">3D</button>
@@ -1587,6 +1587,7 @@
       </button>
       <button id="fpClose" aria-label="Close flight details">✕</button>
     </div>
+    <div class="panel-sub" id="fpSub">—</div>
   </div>
   <div class="panel-photo" id="fpPhotoWrap">
     <img id="fpPhoto" alt="Aircraft photo">
