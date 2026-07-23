@@ -298,10 +298,12 @@
   .panel-head{display:flex;justify-content:space-between;align-items:flex-start;
     padding:12px 14px 10px;border-bottom:1px solid var(--border);}
   .panel-callsign{font-size:24px;font-weight:700;letter-spacing:.05em;}
-  .panel-ident{display:flex;align-items:center;gap:12px;}
+  .panel-ident{display:flex;align-items:center;gap:12px;min-width:0;}
+  .panel-ident>div{min-width:0;}
   .panel-logo{width:42px;height:42px;border-radius:8px;background:#fff;
     object-fit:contain;padding:3px;display:none;}
-  .panel-sub{font-size:14px;color:var(--muted);margin-top:3px;}
+  .panel-sub{font-size:14px;color:var(--muted);margin-top:3px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .panel-head button{background:none;border:none;color:var(--muted);
     font-size:14px;cursor:pointer;padding:2px 4px;line-height:1;}
   .panel-head button:hover{color:var(--text);}
