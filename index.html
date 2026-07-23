@@ -6524,31 +6524,6 @@ function tipPlace(el, f) {
   el.style.top = win.y + "px";
   el.style.display = "flex";
 }
-/* Ground tags: every aircraft sitting on the ground near the camera wears its
- * callout automatically — the ramp reads like a real airport view with each
- * taxiing and holding jet labelled. Airborne traffic stays hover-only.
- * Range-gated and capped so a distant or busy view can't wallpaper itself. */
-const GROUND_TAG_RANGE_M = 20000;   // camera-to-plane cutoff (zoomed-in only)
-const GROUND_TAG_MAX = 14;          // most simultaneous ground tags
-const GROUND_TAG_RESELECT = 30;     // frames between re-picking the set
-const groundTagPool = [];           // reusable DOM cards
-let groundTagSet = [];              // [{hex,f}] currently tagged
-let _gtFrame = 0;
-
-function groundTagEl(i) {
-  let el = groundTagPool[i];
-  if (el) return el;
-  el = document.createElement("div");
-  el.className = "plane-tip glass";
-  const img = document.createElement("img");
-  img.alt = "";
-  img.addEventListener("error", () => { img.style.display = "none"; });
-  el.append(img, document.createElement("span"));
-  document.body.appendChild(el);
-  groundTagPool[i] = el;
-  return el;
-}
-
 // Runs every frame from the motion loop, so every card rides its aircraft.
 function updatePlaneTips() {
   if (tipPinHex) {
@@ -6567,29 +6542,6 @@ function updatePlaneTips() {
     tipPlace(tipHoverEl, hf);
   } else {
     tipHoverEl.style.display = "none";
-  }
-  // Re-pick the on-ground set every so often; reposition it every frame.
-  if (_gtFrame++ % GROUND_TAG_RESELECT === 0) {
-    const cands = [];
-    flights.forEach((f, hex) => {
-      if (!f.data || f.data.alt_baro !== "ground" || !f.billboard) return;
-      const d = Cesium.Cartesian3.distance(viewer.camera.positionWC, f.billboard.position);
-      if (d <= GROUND_TAG_RANGE_M) cands.push({ hex, f, d });
-    });
-    cands.sort((a, b) => a.d - b.d);
-    groundTagSet = cands.slice(0, GROUND_TAG_MAX);
-  }
-  const n = Math.max(groundTagSet.length, groundTagPool.length);
-  for (let i = 0; i < n; i++) {
-    const e = groundTagSet[i];
-    // The pinned or hovered plane already wears a card — don't double-tag it,
-    // and drop tags whose aircraft left the feed or lifted off mid-cycle.
-    const ok = e && e.hex !== tipPinHex && e.hex !== tipHoverHex
-      && flights.get(e.hex) === e.f && e.f.data && e.f.data.alt_baro === "ground";
-    if (!ok) { if (groundTagPool[i]) groundTagPool[i].style.display = "none"; continue; }
-    const el = groundTagEl(i);
-    tipSet(el, e.f, e.hex);
-    tipPlace(el, e.f);
   }
 }
 
