@@ -97,6 +97,16 @@
     box-shadow:0 0 12px rgba(76,150,235,.35),inset 0 1px 0 rgba(255,255,255,.28);
     text-shadow:none;
   }
+  /* Version, set beside the BETA chip in the same refined register: tabular
+     figures so the number never shifts as it grows, and the same text-fill
+     reset the clipped-gradient wordmark forces on its children. */
+  .brand .name .ver{
+    display:inline-block;vertical-align:3.5px;margin-left:6px;
+    font-size:9.5px;font-weight:600;letter-spacing:.10em;
+    font-feature-settings:"tnum" 1;font-variant-numeric:tabular-nums;
+    color:rgba(198,216,240,.72);-webkit-text-fill-color:rgba(198,216,240,.72);
+    text-shadow:none;
+  }
   .brand .tag{font-size:9.5px;letter-spacing:.3em;color:var(--muted);margin-top:3px;text-transform:uppercase;}
 
   /* ---------- Search + map-style toggle (top centre) ---------- */
@@ -1104,19 +1114,53 @@
   }
 
   /* My Flights: a filled, considered chip with a touch of warmth on the star. */
+  /* My Flights: the one persistent personal control, so it carries a little
+     more presence than the layer chips — a warmer gilt hairline, a soft amber
+     bloom behind the star, and a specular sweep across the glass. */
   .mf-toggle{
-    background:linear-gradient(180deg,rgba(var(--glass-tint),.10),
-      rgba(var(--glass-tint),.02) 40%),
+    /* NB: no `position` here — the base rule anchors this top-right with
+       `position:absolute`, which already establishes the containing block the
+       ::after sweep needs. Setting `relative` drops it into normal flow. */
+    overflow:hidden;padding:10px 15px;
+    background:linear-gradient(180deg,rgba(var(--glass-tint),.13),
+      rgba(var(--glass-tint),.03) 42%,rgba(0,0,0,.06)),
       rgba(var(--glass-scrim),var(--glass-scrim-alpha));
-    box-shadow:0 1px 0 rgba(var(--glass-tint),.20) inset,
-      0 8px 22px -12px rgba(0,0,0,.6);
-    font-weight:600;
+    border-color:rgba(214,182,120,.30);
+    box-shadow:0 1px 0 rgba(var(--glass-tint),.24) inset,
+      0 -1px 0 rgba(0,0,0,.22) inset,
+      0 10px 26px -12px rgba(0,0,0,.68),
+      0 0 22px -14px rgba(255,196,92,.55);
+    font-weight:650;letter-spacing:.05em;
   }
-  .mf-toggle .star{filter:drop-shadow(0 0 6px rgba(255,200,90,.55));}
+  /* Specular sweep — a thin diagonal highlight riding the top edge. */
+  .mf-toggle::after{
+    content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+    background:linear-gradient(115deg,transparent 18%,
+      rgba(255,255,255,.16) 44%,rgba(255,255,255,.03) 56%,transparent 74%);
+    opacity:.85;transition:opacity .2s ease;
+  }
+  .mf-toggle:hover{
+    border-color:rgba(240,206,138,.55);
+    box-shadow:0 1px 0 rgba(var(--glass-tint),.28) inset,
+      0 12px 30px -12px rgba(0,0,0,.72),
+      0 0 26px -10px rgba(255,196,92,.60);
+  }
+  .mf-toggle:hover::after{opacity:1;}
+  .mf-toggle:active{transform:translateY(0) scale(.985);}
+  .mf-toggle .star{
+    font-size:15px;
+    background:linear-gradient(180deg,#ffe9ad,#f5c058);
+    -webkit-background-clip:text;background-clip:text;
+    color:transparent;-webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 0 7px rgba(255,200,90,.7));
+  }
+  /* Open: the amber warmth yields to the accent, matching the layer chips. */
   .mf-toggle[aria-expanded="true"]{
-    border-color:rgba(140,190,255,.5);
-    background:linear-gradient(180deg,rgba(76,140,230,.22),rgba(40,90,170,.12)),
+    border-color:rgba(140,190,255,.55);
+    background:linear-gradient(180deg,rgba(76,140,230,.26),rgba(40,90,170,.14)),
       rgba(var(--glass-scrim),var(--glass-scrim-alpha));
+    box-shadow:0 1px 0 rgba(var(--glass-tint),.24) inset,
+      0 10px 26px -12px rgba(40,110,220,.6);
   }
 
   /* :where() keeps this at zero specificity so it can never beat a host's own
@@ -1467,7 +1511,7 @@
     <circle cx="17" cy="17" r="15" stroke="#eaf3ff" stroke-width=".7" opacity=".75"/>
   </svg>
   <div>
-    <div class="name">Aero<em>Nav</em>3D<span class="beta">BETA</span></div>
+    <div class="name">Aero<em>Nav</em>3D<span class="beta">BETA</span><span class="ver">v1.1</span></div>
     <div class="tag" id="brandTag">Global Navigation</div>
   </div>
 </div>
